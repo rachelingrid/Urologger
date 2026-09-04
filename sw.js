@@ -1,4 +1,4 @@
-const CACHE = 'diurese-v6';
+const CACHE = 'diurese-v7';
 const ARQUIVOS = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', e => {
