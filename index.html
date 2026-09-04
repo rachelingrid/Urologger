@@ -158,6 +158,15 @@ table.rel td.n{text-align:right;font-variant-numeric:tabular-nums}
 .rel-rodape{border-top:.5pt solid #d8d0c0;padding-top:7pt;margin-top:6pt;
   font-family:system-ui,sans-serif;font-size:7.5pt;color:#6d675c;line-height:1.5}
 .rel-graf{margin-bottom:16pt}
+
+#autoPainel{position:absolute;left:10px;right:10px;top:10px;display:none;
+  font-family:system-ui,sans-serif}
+.autoStatus{background:rgba(0,0,0,.6);color:#fff;font-size:13px;padding:7px 11px;
+  border-radius:3px 3px 0 0}
+.autoStatus.bom{background:rgba(47,107,79,.88)}
+.autoStatus.ruim{background:rgba(168,106,18,.88)}
+.autoTrilho{height:4px;background:rgba(255,255,255,.25);border-radius:0 0 3px 3px;overflow:hidden}
+#autoBar{height:100%;width:0;background:#e6c44e;transition:width .25s}
 dialog{border:none;border-radius:5px;padding:0;width:min(560px,94vw);max-height:88vh;
   background:var(--papel);color:var(--texto)}
 dialog::backdrop{background:rgba(18,41,43,.55)}
@@ -309,6 +318,10 @@ nav.rodape button{flex:1}
       <video id="video" playsinline muted></video>
       <div class="silhueta"></div>
       <div class="bolha"><span class="marca" id="marcaNivel">incline o aparelho</span></div>
+      <div id="autoPainel">
+        <div class="autoStatus" id="autoStatus">Procurando a graduação…</div>
+        <div class="autoTrilho"><div id="autoBar"></div></div>
+      </div>
     </div>
     <div id="calWrap">
       <div class="calGuia" id="calGuia">Toque na <strong>base</strong> do coletor</div>
@@ -486,6 +499,7 @@ abrirCameraReal = async ()=>{
     document.getElementById('btnDisparar').style.display='block';
     document.getElementById('btnCamera').style.display='none';
     ligarNivel();
+    iniciarLacoAuto();
   }catch(e){
     alert('Câmera indisponível neste aparelho ou permissão negada. Use “Da galeria”.');
   }
@@ -511,19 +525,7 @@ function ligarNivel(){
     document.getElementById('marcaNivel').textContent='nível indisponível neste aparelho';
   }
 }
-document.getElementById('btnDisparar').onclick = ()=>{
-  const v=document.getElementById('video');
-  const c=document.createElement('canvas');
-  const L=Math.min(v.videoWidth,1280), esc=L/v.videoWidth;
-  c.width=v.videoWidth*esc; c.height=v.videoHeight*esc;
-  c.getContext('2d').drawImage(v,0,0,c.width,c.height);
-  fotoBase64 = c.toDataURL('image/jpeg',0.7);
-  const ag=new Date(Date.now()-new Date().getTimezoneOffset()*60000);
-  aplicarHora(ag.toISOString().slice(0,16),'momento do disparo');
-  ultimoCanvas = c;
-  mostrarFoto(); analisarCor(c); medirAutomatico(c);
-  pararCamera();
-};
+document.getElementById('btnDisparar').onclick = ()=>{ pararLaco(); capturarAgora(null); };
 document.getElementById('arquivo').onchange = e=>{
   const f=e.target.files[0]; if(!f) return;
   const fb=new FileReader();
@@ -555,7 +557,8 @@ function mostrarFoto(){
   document.getElementById('btnCamera').style.display='block';
   document.getElementById('btnCamera').textContent='Refazer foto';
 }
-function pararCamera(){ if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
+function pararCamera(){ pararLaco(); document.getElementById('autoPainel').style.display='none';
+  if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } }
 
 /* sugestão automática de aspecto pela região central da silhueta */
 function analisarCor(canvas){
@@ -893,6 +896,113 @@ document.getElementById('capSeguir').onclick = async ()=>{
   abrirCameraReal();
 };
 
+
+
+/* ---------- aquisição automática: mede na pré-visualização e dispara sozinho ---------- */
+let laçoAuto = null, historicoAuto = [], congelado = false;
+
+function pararLaco(){ if(laçoAuto){ clearInterval(laçoAuto); laçoAuto = null; } historicoAuto = []; }
+
+function quadroDoVideo(){
+  const v = document.getElementById('video');
+  if(!v.videoWidth) return null;
+  const c = document.createElement('canvas');
+  const alvo = 480, esc = Math.min(1, alvo / v.videoWidth);
+  c.width = v.videoWidth*esc; c.height = v.videoHeight*esc;
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  return c;
+}
+
+function iniciarLacoAuto(){
+  pararLaco(); congelado = false;
+  const painel = document.getElementById('autoPainel');
+  painel.style.display = 'block';
+  laçoAuto = setInterval(async ()=>{
+    if(congelado) return;
+    const c = quadroDoVideo(); if(!c) return;
+    if(!modeloAtual){
+      const ms = await Store.lerModelos();
+      modeloAtual = ms.find(m=>m.capacidade===(window.__capColetor||2000)) || ms[0] || null;
+    }
+    if(!modeloAtual) return;
+
+    const r = lerColetor(c, modeloAtual, ROI);
+    const st = document.getElementById('autoStatus');
+    const bar = document.getElementById('autoBar');
+
+    if(!r.ok || !aprumado){
+      historicoAuto = [];
+      bar.style.width = '0%';
+      st.textContent = !aprumado ? 'Aprume o aparelho' : r.motivo;
+      st.className = 'autoStatus ruim';
+      return;
+    }
+    historicoAuto.push(r.volume);
+    if(historicoAuto.length > 5) historicoAuto.shift();
+
+    const med = historicoAuto.reduce((a,b)=>a+b,0)/historicoAuto.length;
+    const desvio = Math.max(...historicoAuto.map(v=>Math.abs(v-med)));
+    const tol = Math.max(20, modeloAtual.mlPorMarca*0.4);
+    const estavel = historicoAuto.length >= 4 && desvio <= tol;
+
+    bar.style.width = Math.min(100, historicoAuto.length/4*100) + '%';
+    st.className = 'autoStatus bom';
+    st.textContent = estavel
+      ? 'Leitura estável — capturando'
+      : `Medindo: ${Math.round(med)} mL · segure firme`;
+
+    if(estavel){
+      congelado = true;
+      pararLaco();
+      capturarAgora(Math.round(med/5)*5);
+    }
+  }, 400);
+}
+
+/* captura definitiva, já com o volume medido */
+function capturarAgora(volumeMedido){
+  const v = document.getElementById('video');
+  const c = document.createElement('canvas');
+  const esc = Math.min(1, 1280/v.videoWidth);
+  c.width = v.videoWidth*esc; c.height = v.videoHeight*esc;
+  c.getContext('2d').drawImage(v, 0, 0, c.width, c.height);
+  fotoBase64 = c.toDataURL('image/jpeg', 0.7);
+  ultimoCanvas = c;
+  const ag = new Date(Date.now() - new Date().getTimezoneOffset()*60000);
+  aplicarHora(ag.toISOString().slice(0,16), 'momento do disparo');
+  document.getElementById('autoPainel').style.display = 'none';
+  mostrarFoto();
+  analisarCor(c);
+  if(volumeMedido != null){
+    document.getElementById('rVolume').value = volumeMedido;
+    ultimaLeitura = {ok:true, volume:volumeMedido, confianca:0.85};
+    calAtivo = false; calPontos = [];
+    document.getElementById('calGuia').innerHTML =
+      'Volume medido automaticamente — confira antes de salvar';
+    document.getElementById('calRes').innerHTML =
+      `<strong>${volumeMedido} mL</strong> · leitura estável em ${modeloAtual.nome}`;
+    document.getElementById('notaModelo').textContent =
+      modeloAtual.nome + ' — medição automática.';
+  } else {
+    medirAutomatico(c);
+  }
+  pararCamera();
+}
+
+/* ---------- modelos padrão, para funcionar sem cadastro prévio ---------- */
+const MODELOS_PADRAO = [
+  {id:'std-2000', nome:'Sistema fechado 2000 mL', capacidade:2000, mlPorMarca:100, padrao:true},
+  {id:'std-1500', nome:'Sistema fechado 1500 mL', capacidade:1500, mlPorMarca:100, padrao:true},
+  {id:'std-750',  nome:'Coletor de perna 750 mL', capacidade:750,  mlPorMarca:50,  padrao:true},
+  {id:'std-500',  nome:'Coletor de perna 500 mL', capacidade:500,  mlPorMarca:25,  padrao:true}
+];
+async function semearModelos(){
+  const ms = await Store.lerModelos();
+  if(ms.length) return ms;
+  for(const m of MODELOS_PADRAO) await Store.salvarModelo(m);
+  return await Store.lerModelos();
+}
+
 /* ---------- modelos de coletor: cadastro e uso ---------- */
 const ROI = {x0:0.26, x1:0.74, y0:0.12, y1:0.88};   // mesma área da silhueta
 let modeloAtual = null, ultimaLeitura = null, ultimoCanvas = null;
@@ -946,7 +1056,10 @@ async function medirAutomatico(canvas){
   const nota = document.getElementById('notaModelo');
   const ms = await Store.lerModelos();
   if(!modeloAtual){
-    modeloAtual = ms.find(m=>m.id===document.getElementById('rModelo').value) || (ms.length===1?ms[0]:null);
+    const escolhido = document.getElementById('rModelo').value;
+    modeloAtual = ms.find(m=>m.id===escolhido)
+      || ms.find(m=>m.capacidade === (window.__capColetor||2000))
+      || ms[0] || null;
     if(modeloAtual) document.getElementById('rModelo').value = modeloAtual.id;
   }
   if(!modeloAtual){
@@ -1260,7 +1373,7 @@ document.getElementById('btnCsv').onclick=async()=>{
 };
 
 /* ---------- início ---------- */
-(async()=>{ await Store.iniciar(); await render();
+(async()=>{ await Store.iniciar(); await semearModelos(); await render();
   if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
 })();
 </script>
