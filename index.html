@@ -3,777 +3,481 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Urologger AI</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <!-- Chart.js -->
+    <title>Urologger - Sistema de Processamento de Urina</title>
+
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Chart.js & jsPDF -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Tesseract.js -->
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-    <!-- jsPDF -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Tesseract.js (OCR) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <!-- OpenCV.js -->
+    <script async src="https://docs.opencv.org/4.7.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+
     <style>
-        .modal { transition: opacity 0.25s ease; }
-        body { font-family: 'Inter', sans-serif; }
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+        .card { border: none; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
+        #canvasOutput { width: 100%; max-width: 480px; height: auto; border: 2px solid #2b2b2b; border-radius: 8px; background-color: #000; }
+        .color-badge { width: 22px; height: 22px; border-radius: 50%; display: inline-block; vertical-align: middle; border: 1px solid #ccc; }
+        .status-dot { height: 10px; width: 10px; background-color: #ffc107; border-radius: 50%; display: inline-block; }
+        .status-ready { background-color: #198754; }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+<body>
 
-    <!-- Top Navigation Bar -->
-    <header class="bg-indigo-600 text-white shadow-md p-4 sticky top-0 z-40">
-        <div class="max-w-7xl mx-auto flex justify-between items-center">
-            <h1 class="text-2xl font-bold flex items-center gap-2">
-                <span>🩺</span> Urologger AI
-            </h1>
-            <div id="patientStatus" class="text-sm font-medium hidden">
-                <span id="activePatientName"></span> | <span id="activePatientWeight"></span>kg
-            </div>
+<div class="container py-4">
+    <!-- Header -->
+    <header class="d-flex justify-content-between align-items-center pb-3 mb-4 border-bottom">
+        <div>
+            <h2 class="fw-bold text-primary mb-0">Urologger</h2>
+            <small class="text-muted">Análise Automatizada do Coletor Urinário</small>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span id="statusDot" class="status-dot"></span>
+            <span id="statusText" class="small text-muted">Carregando motores de visão...</span>
         </div>
     </header>
 
-    <!-- Main Content Wrapper -->
-    <main class="flex-1 max-w-7xl w-full mx-auto p-4 md:p-6 space-y-6">
+    <div class="row g-4">
+        <!-- Coluna 1: Cadastro e Configurações -->
+        <div class="col-lg-4">
+            <div class="card p-3 mb-3">
+                <h6 class="card-title text-primary fw-semibold mb-3">1. Identificação do Paciente</h6>
+                <form id="patientForm">
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">Nome Completo</label>
+                        <input type="text" id="pName" class="form-control form-control-sm" placeholder="Ex: Paciente A" required>
+                    </div>
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small mb-1">Data Nasc.</label>
+                            <input type="date" id="pDob" class="form-control form-control-sm" required>
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label small mb-1">Peso(kg)</label>
+                            <input type="number" id="pWeight" class="form-control form-control-sm" value="70" step="0.1" required>
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label small mb-1">Alt.(cm)</label>
+                            <input type="number" id="pHeight" class="form-control form-control-sm" value="170" required>
+                        </div>
+                    </div>
+                </form>
+            </div>
 
-        <!-- Privacy & Storage Banner -->
-        <div class="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-lg shadow-sm flex justify-between items-start">
-            <div class="flex gap-3">
-                <span class="text-xl">⚠️</span>
-                <p class="text-sm text-amber-900 font-medium">
-                    Os dados são armazenados localmente neste dispositivo por privacidade. Se você limpar o cache do navegador, os dados serão perdidos.
-                </p>
+            <div class="card p-3">
+                <h6 class="card-title text-primary fw-semibold mb-3">2. Parâmetros do Coletor</h6>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Modelo / Tipo de Coletor</label>
+                    <input type="text" id="collectorModel" class="form-control form-control-sm" value="Coletor Fixo 2000 mL">
+                </div>
+                <div class="row g-2">
+                    <div class="col-4">
+                        <label class="form-label small mb-1">Nível Mín.</label>
+                        <input type="number" id="minVol" class="form-control form-control-sm" value="100">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small mb-1">Nível Máx.</label>
+                        <input type="number" id="maxVol" class="form-control form-control-sm" value="2000">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small mb-1">Passo (mL)</label>
+                        <input type="number" id="stepVol" class="form-control form-control-sm" value="100">
+                    </div>
+                </div>
             </div>
         </div>
 
-        <!-- Setup Screen (Patient and Hardware Initialization) -->
-        <section id="setupSection" class="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 max-w-2xl mx-auto">
-            <h2 class="text-xl font-bold text-slate-900 mb-4 flex items-center gap-2">
-                👤 Cadastro do Paciente & Coletor
-            </h2>
-            <form id="setupForm" class="space-y-4">
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Nome Completo</label>
-                        <input type="text" id="patientName" required class="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Data de Nascimento</label>
-                        <input type="date" id="patientDob" required class="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Peso (kg)</label>
-                        <input type="number" id="patientWeight" step="0.1" required class="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Altura (cm)</label>
-                        <input type="number" id="patientHeight" required class="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                    </div>
-                </div>
-
-                <div class="border-t border-slate-100 pt-4 mt-4">
-                    <h3 class="text-sm font-bold text-slate-700 mb-2">Configuração do Coletor Rígido</h3>
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Volume Máximo (ml)</label>
-                            <input type="number" id="collectorMaxVolume" value="1000" required class="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                        </div>
-                        <div>
-                            <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Intervalo da Escala (ml)</label>
-                            <input type="number" id="collectorScaleInterval" value="100" required class="w-full p-2.5 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
-                        </div>
-                    </div>
-                </div>
-
-                <button type="submit" class="w-full bg-indigo-600 text-white font-semibold py-3 px-4 rounded-lg hover:bg-indigo-700 transition shadow-sm cursor-pointer">
-                    Iniciar Monitoramento
-                </button>
-            </form>
-        </section>
-
-        <!-- Main Dashboard View (Hidden initially) -->
-        <section id="dashboardSection" class="hidden space-y-6">
-            
-            <!-- Quick Actions Banner -->
-            <div class="flex flex-wrap gap-3 justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-                <button id="openCameraBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-lg font-semibold flex items-center gap-2 shadow-sm transition cursor-pointer">
-                    📷 Nova Captura
-                </button>
-                <div class="flex gap-2">
-                    <button id="exportCsvBtn" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-medium text-sm transition cursor-pointer">
-                        📊 Exportar CSV
-                    </button>
-                    <button id="exportPdfBtn" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-medium text-sm transition cursor-pointer">
-                        📄 Gerar Relatório PDF
-                    </button>
-                    <button id="clearDataBtn" class="bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2 rounded-lg font-medium text-sm transition cursor-pointer">
-                        🔄 Resetar PWA
-                    </button>
-                </div>
-            </div>
-
-            <!-- Analytics and Chart Row -->
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <!-- Trend Graph Card -->
-                <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 lg:col-span-2">
-                    <h3 class="text-base font-bold text-slate-900 mb-4">Gráfico de Tendência de Volume (ml)</h3>
-                    <div class="h-64 relative">
-                        <canvas id="trendChart"></canvas>
-                    </div>
-                </div>
+        <!-- Coluna 2: Aquisição da Imagem e Canvas -->
+        <div class="col-lg-8">
+            <div class="card p-3">
+                <h6 class="card-title text-primary fw-semibold mb-3">3. Captura & Processamento</h6>
                 
-                <!-- Quick Stats summary cards -->
-                <div class="space-y-4">
-                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
-                        <div>
-                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Último Débito</p>
-                            <h4 id="statLastOutput" class="text-2xl font-black text-slate-900 mt-1">0.00 <span class="text-sm font-normal text-slate-500">ml/kg/h</span></h4>
-                        </div>
-                        <span class="text-2xl bg-indigo-50 p-3 rounded-xl">💧</span>
+                <div class="row align-items-center mb-3">
+                    <div class="col-md-8">
+                        <input type="file" id="imgUploader" accept="image/*" class="form-control form-control-sm">
                     </div>
-                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
-                        <div>
-                            <p class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Total Acumulado</p>
-                            <h4 id="statTotalVolume" class="text-2xl font-black text-slate-900 mt-1">0 <span class="text-sm font-normal text-slate-500">ml</span></h4>
-                        </div>
-                        <span class="text-2xl bg-emerald-50 p-3 rounded-xl">🧪</span>
+                    <div class="col-md-4 mt-2 mt-md-0">
+                        <button id="btnProcess" class="btn btn-primary btn-sm w-100" onclick="openInstructionModal()" disabled>
+                            Processar Imagem
+                        </button>
                     </div>
                 </div>
-            </div>
 
-            <!-- Chronological Log List Table -->
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-                <div class="p-5 border-b border-slate-100">
-                    <h3 class="text-base font-bold text-slate-900">Histórico Clínico de Medições</h3>
+                <div class="text-center">
+                    <canvas id="canvasOutput"></canvas>
                 </div>
-                <div class="overflow-x-auto">
-                    <table class="w-full text-left border-collapse">
-                        <thead>
-                            <tr class="bg-slate-50 text-slate-600 text-xs font-bold uppercase border-b border-slate-100">
-                                <th class="p-4">Data / Hora</th>
-                                <th class="p-4">Volume (ml)</th>
-                                <th class="p-4">Cor</th>
-                                <th class="p-4">Débito Urinário</th>
-                                <th class="p-4">Clínica (Odor / Sintomas)</th>
-                                <th class="p-4">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody id="historyTableBody" class="text-sm divide-y divide-slate-100 text-slate-700">
-                            <!-- Rows dynamically populated -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
-    </main>
-
-    <!-- Modal: Acquisition Warning Instructions -->
-    <div id="instructionModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 opacity-0 pointer-events-none modal">
-        <div class="bg-white rounded-2xl max-w-md w-full shadow-xl overflow-hidden p-6 space-y-4">
-            <h3 class="text-lg font-bold text-slate-900 flex items-center gap-2">
-                📸 Instruções de Aquisição
-            </h3>
-            <div class="space-y-3 text-sm text-slate-600">
-                <p class="flex gap-2"><span>💡</span> <strong>Luz:</strong> Mantenha o ambiente bem iluminado ou ative o flash do aparelho.</p>
-                <p class="flex gap-2"><span>📐</span> <strong>Alinhamento:</strong> O smartphone deve estar firmemente encaixado no suporte Urologger.</p>
-                <p class="flex gap-2"><span>🎯</span> <strong>Escala:</strong> Certifique-se de que toda a graduação do coletor está visível e paralela à tela.</p>
-            </div>
-            <div class="pt-2 flex justify-end">
-                <button id="confirmInstructionsBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-4 py-2 rounded-lg cursor-pointer transition">
-                    Entendido, Abrir Câmera
-                </button>
             </div>
         </div>
     </div>
 
-    <!-- Modal: Camera & Image Analysis Interface -->
-    <div id="cameraModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 opacity-0 pointer-events-none modal">
-        <div class="bg-white rounded-2xl max-w-2xl w-full shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div class="p-4 border-b border-slate-100 flex justify-between items-center">
-                <h3 class="font-bold text-slate-900">Aquisição e Validação Avançada</h3>
-                <button id="closeCameraModalBtn" class="text-slate-400 hover:text-slate-600 text-xl font-bold p-1 cursor-pointer">&times;</button>
-            </div>
-            <div class="p-4 flex-1 flex flex-col items-center justify-center bg-slate-900 relative min-h-[300px]">
-                <!-- Interactive Elements inside Camera View -->
-                <video id="videoFeed" autoplay playsinline class="w-full max-h-[50vh] object-contain rounded-lg"></video>
-                <canvas id="processingCanvas" class="hidden"></canvas>
-                <div id="cameraFeedback" class="absolute bottom-4 left-4 right-4 bg-red-600/90 text-white text-xs p-2.5 rounded-lg hidden text-center shadow-lg"></div>
-            </div>
-            <div class="p-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center">
-                <label class="bg-slate-200 hover:bg-slate-300 text-slate-700 font-medium px-4 py-2 rounded-lg text-xs cursor-pointer transition">
-                    📁 Importar Arquivo
-                    <input type="file" id="fileFallback" accept="image/*" class="hidden">
-                </label>
-                <button id="captureBtn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-6 py-2 rounded-lg transition cursor-pointer">
-                    📸 Capturar Foto
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal: Post-Acquisition Clinical Records & Level Validation -->
-    <div id="clinicalModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 opacity-0 pointer-events-none modal">
-        <div class="bg-white rounded-2xl max-w-lg w-full shadow-xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div class="p-4 border-b border-slate-100 bg-indigo-50">
-                <h3 class="font-bold text-indigo-900 flex items-center gap-1">🧪 Processamento Triplo Finalizado</h3>
-            </div>
-            <form id="clinicalForm" class="p-6 overflow-y-auto space-y-4 text-sm">
-                
-                <!-- Automated Metrics Confirmation Row -->
-                <div class="bg-slate-50 p-4 rounded-xl border border-slate-200/80 space-y-3">
-                    <h4 class="font-bold text-slate-700 text-xs uppercase tracking-wider">Resultados da Validação Tripla AI</h4>
-                    
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-xs text-slate-500 font-medium">Volume Estimado (ml)</label>
-                            <input type="number" id="computedVolume" required class="w-full mt-1 p-2 bg-white border border-slate-200 rounded-lg text-base font-bold text-slate-900 focus:ring-2 focus:ring-indigo-500 outline-none">
+    <!-- Seção de Confirmação & Sinais Clínicos (Aparece após processamento) -->
+    <div class="row mt-4" id="clinicalPanel" style="display: none;">
+        <div class="col-12">
+            <div class="card p-4 border-start border-primary border-4">
+                <h5 class="fw-bold text-dark mb-3">4. Aferição da Imagem & Registro de Sintomas</h5>
+                <div class="row g-3">
+                    <div class="col-md-4 border-end">
+                        <div class="mb-2">
+                            <span class="text-muted small">Volume Medido:</span>
+                            <div class="fs-2 fw-bold text-primary"><span id="outVol">0</span> <small class="fs-6">mL</small></div>
                         </div>
-                        <div>
-                            <label class="block text-xs text-slate-500 font-medium">Cor Detectada</label>
-                            <div class="flex items-center gap-2 mt-1">
-                                <div id="colorIndicator" class="w-7 h-7 rounded-full border border-slate-300 shadow-inner"></div>
-                                <select id="urineColorSelect" class="p-1.5 border border-slate-200 rounded-lg text-xs w-full bg-white outline-none">
-                                    <option value="Clara / Transparente">Clara / Transparente</option>
-                                    <option value="Amarelo Claro">Amarelo Claro</option>
-                                    <option value="Amarelo Concentrado">Amarelo Concentrado</option>
-                                    <option value="Âmbar / Escura">Âmbar / Escura</option>
-                                    <option value="Avermelhada / Hematúria">Avermelhada / Hematúria</option>
-                                    <option value="Fruxenta / Turva">Fruxenta / Turva</option>
+                        <div class="mb-2">
+                            <span class="text-muted small">Coloração Urinária:</span>
+                            <div class="d-flex align-items-center gap-2 mt-1">
+                                <span id="outColorBadge" class="color-badge"></span>
+                                <span id="outColorText" class="fw-semibold">--</span>
+                            </div>
+                        </div>
+                        <small class="text-muted">Método: Tripla Validação (Menisco + OCR + Escala)</small>
+                    </div>
+
+                    <div class="col-md-8">
+                        <h6>Sinais Clínicos e Sintomas</h6>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6 col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="symPain">
+                                    <label class="form-check-label small" for="symPain">Dor / Ardência ao urinar</label>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="symUrgency">
+                                    <label class="form-check-label small" for="symUrgency">Urgência miccional</label>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="symLumbar">
+                                    <label class="form-check-label small" for="symLumbar">Dor lombar</label>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="symThirst">
+                                    <label class="form-check-label small" for="symThirst">Sede intensa</label>
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <select id="symOdor" class="form-select form-select-sm">
+                                    <option value="Característico">Odor: Característico (Sem alteração)</option>
+                                    <option value="Fétido / Intenso">Odor: Fétido / Intenso</option>
+                                    <option value="Adocicado">Odor: Adocicado / Frutado</option>
                                 </select>
                             </div>
                         </div>
+                        <button class="btn btn-success btn-sm float-end" onclick="confirmAndSaveRecord()">
+                            Confirmar e Registrar Medição
+                        </button>
                     </div>
                 </div>
-
-                <!-- Emptying Log Section -->
-                <div class="p-4 border border-slate-200 rounded-xl space-y-3">
-                    <label class="block font-semibold text-slate-700">O coletor foi esvaziado após esta medição?</label>
-                    <div class="flex gap-4">
-                        <label class="flex items-center gap-2 cursor-pointer font-medium text-slate-700">
-                            <input type="radio" name="wasEmptied" value="sim" class="text-indigo-600 focus:ring-indigo-500"> Sim
-                        </label>
-                        <label class="flex items-center gap-2 cursor-pointer font-medium text-slate-700">
-                            <input type="radio" name="wasEmptied" value="nao" checked class="text-indigo-600 focus:ring-indigo-500"> Não
-                        </label>
-                    </div>
-                    <div id="emptyingTimeContainer" class="hidden mt-2">
-                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Horário do Esvaziamento</label>
-                        <input type="datetime-local" id="emptyingTime" class="w-full p-2 border border-slate-200 rounded-lg outline-none">
-                    </div>
-                </div>
-
-                <!-- Clinical Checklist (Metadata entry) -->
-                <div class="space-y-3">
-                    <h4 class="font-bold text-slate-800 border-b border-slate-100 pb-1">Metadados Clínicos</h4>
-                    
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Odor da Urina</label>
-                        <select id="urineOdor" class="w-full p-2.5 border border-slate-200 rounded-lg bg-white outline-none">
-                            <option value="Sui generis">Sui generis (Normal)</option>
-                            <option value="Fétido">Fétido (Sugestivo de Infecção)</option>
-                            <option value="Adocicado">Adocicado</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 uppercase mb-1">Sinais e Sintomas Relatados</label>
-                        <div class="grid grid-cols-2 gap-2 mt-1 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" value="Dor/Ardência" class="rounded text-indigo-600"> Dor / Ardência</label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" value="Urgência" class="rounded text-indigo-600"> Urgência Miccional</label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" value="Dor Lombar" class="rounded text-indigo-600"> Dor Lombar</label>
-                            <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" value="Sede Intensa" class="rounded text-indigo-600"> Sede Intensa</label>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="pt-2 flex gap-2">
-                    <button type="button" id="cancelClinicalBtn" class="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 rounded-lg transition cursor-pointer">
-                        Cancelar
-                    </button>
-                    <button type="submit" class="w-2/3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2.5 rounded-lg transition shadow-sm cursor-pointer">
-                        Confirmar e Salvar Registro
-                    </button>
-                </div>
-            </form>
+            </div>
         </div>
     </div>
 
-    <!-- Application State Core Logic Scripts -->
-    <script>
-        // State Management Global Variables
-        let patientData = null;
-        let logs = [];
-        let activeStream = null;
-        let lastCapturedImageData = null;
-        let trendChart = null;
+    <!-- Tabela de Histórico e Gráfico de Débito Urinário -->
+    <div class="row mt-4">
+        <div class="col-lg-7">
+            <div class="card p-3 h-100">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="card-title text-primary fw-semibold mb-0">Histórico de Medições Cronológicas</h6>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-danger" onclick="generatePDF()">PDF</button>
+                        <button class="btn btn-outline-success" onclick="generateCSV()">CSV</button>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle small" id="historyTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Data/Hora</th>
+                                <th>Volume</th>
+                                <th>Coloração</th>
+                                <th>Débito (mL/kg/h)</th>
+                                <th>Sinais Clínicos</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5 mt-3 mt-lg-0">
+            <div class="card p-3 h-100">
+                <h6 class="card-title text-primary fw-semibold mb-3">Curva de Débito Urinário</h6>
+                <canvas id="debitoChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
 
-        // Document Elements References Cache
-        const setupSection = document.getElementById('setupSection');
-        const dashboardSection = document.getElementById('dashboardSection');
-        const setupForm = document.getElementById('setupForm');
-        const patientStatus = document.getElementById('patientStatus');
-        const activePatientName = document.getElementById('activePatientName');
-        const activePatientWeight = document.getElementById('activePatientWeight');
+<!-- Modal Informativo de Orientações de Captura -->
+<div class="modal fade" id="guideModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white py-2">
+                <h6 class="modal-title">Instruções de Posicionamento</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body small">
+                <p class="fw-semibold mb-2">Para garantir o processamento correto:</p>
+                <ol class="mb-0 ps-3">
+                    <li class="mb-1">Verifique se o celular está firme no suporte do dispositivo.</li>
+                    <li class="mb-1">Certifique-se de que não há inclinação ortogonal ou iluminação direta refletindo na bolsa.</li>
+                    <li class="mb-1">O coletor deve estar totalmente estabilizado para evitar movimento no nível hidroaéreo.</li>
+                </ol>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-primary btn-sm" onclick="executeImageProcessing()">Compreendido, Processar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let isOpenCvLoaded = false;
+let recordsHistory = [];
+let chartInstance = null;
+let activeProcessingResult = null;
+
+function onOpenCvReady() {
+    isOpenCvLoaded = true;
+    document.getElementById('statusDot').classList.add('status-ready');
+    document.getElementById('statusText').innerText = "Sistema pronto";
+    document.getElementById('btnProcess').disabled = false;
+    initChart();
+}
+
+function openInstructionModal() {
+    const fileInput = document.getElementById('imgUploader');
+    if (!fileInput.files || fileInput.files.length === 0) {
+        alert("Por favor, selecione uma imagem do coletor.");
+        return;
+    }
+    const modal = new bootstrap.Modal(document.getElementById('guideModal'));
+    modal.show();
+}
+
+async function executeImageProcessing() {
+    bootstrap.Modal.getInstance(document.getElementById('guideModal')).hide();
+    
+    const file = document.getElementById('imgUploader').files[0];
+    const timestamp = extractTimestampFromFile(file);
+
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    
+    img.onload = async function() {
+        // Carrega Matriz OpenCV
+        let src = cv.imread(img);
+        let dst = src.clone();
+
+        // 1. Processamento e Isolamento do Menisco/Nível Hidroaéreo
+        let gray = new cv.Mat();
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+
+        let edges = new cv.Mat();
+        cv.Canny(gray, edges, 50, 150);
+
+        // Varredura da Região de Interesse (ROI) - Meio do Coletor
+        let rows = edges.rows;
+        let cols = edges.cols;
         
-        // Modals Elements Cache
-        const instructionModal = document.getElementById('instructionModal');
-        const cameraModal = document.getElementById('cameraModal');
-        const clinicalModal = document.getElementById('clinicalModal');
-        
-        // Form & Table Dynamic targets
-        const historyTableBody = document.getElementById('historyTableBody');
-        const clinicalForm = document.getElementById('clinicalForm');
-        const computedVolume = document.getElementById('computedVolume');
-        const colorIndicator = document.getElementById('colorIndicator');
-        const urineColorSelect = document.getElementById('urineColorSelect');
-        const cameraFeedback = document.getElementById('cameraFeedback');
-        const videoFeed = document.getElementById('videoFeed');
+        // Localiza a linha horizontal de maior contraste no centro
+        let bestRow = Math.floor(rows * 0.5);
+        let maxTransitions = 0;
 
-        // Initial Initialization
-        window.addEventListener('DOMContentLoaded', () => {
-            const savedPatient = localStorage.getItem('urologger_patient');
-            const savedLogs = localStorage.getItem('urologger_logs');
-            
-            if(savedPatient) {
-                patientData = JSON.parse(savedPatient);
-                logs = savedLogs ? JSON.parse(savedLogs) : [];
-                showDashboard();
+        for (let r = Math.floor(rows * 0.2); r < Math.floor(rows * 0.85); r++) {
+            let transitions = 0;
+            for (let c = Math.floor(cols * 0.3); c < Math.floor(cols * 0.7); c++) {
+                if (edges.ucharPtr(r, c)[0] > 200) transitions++;
             }
-            
-            // Wire Radio change events to open datetime box dynamically
-            document.querySelectorAll('input[name="wasEmptied"]').forEach(radio => {
-                radio.addEventListener('change', (e) => {
-                    const container = document.getElementById('emptyingTimeContainer');
-                    if (e.target.value === 'sim') {
-                        container.classList.remove('hidden');
-                        document.getElementById('emptyingTime').value = new Date().toISOString().slice(0, 16);
-                    } else {
-                        container.classList.add('hidden');
-                    }
-                });
-            });
-        });
-
-        // Setup submission interceptor
-        setupForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            patientData = {
-                name: document.getElementById('patientName').value,
-                dob: document.getElementById('patientDob').value,
-                weight: parseFloat(document.getElementById('patientWeight').value),
-                height: parseInt(document.getElementById('patientHeight').value),
-                maxVolume: parseInt(document.getElementById('collectorMaxVolume').value),
-                scaleInterval: parseInt(document.getElementById('collectorScaleInterval').value)
-            };
-            localStorage.setItem('urologger_patient', JSON.stringify(patientData));
-            showDashboard();
-        });
-
-        function showDashboard() {
-            setupSection.classList.add('hidden');
-            dashboardSection.classList.remove('hidden');
-            patientStatus.classList.remove('hidden');
-            activePatientName.textContent = patientData.name;
-            activePatientWeight.textContent = patientData.weight;
-            
-            updateTableAndStats();
-            initChart();
-        }
-
-        // Triggering Camera workflow sequence
-        document.getElementById('openCameraBtn').addEventListener('click', () => {
-            openModal(instructionModal);
-        });
-
-        document.getElementById('confirmInstructionsBtn').addEventListener('click', () => {
-            closeModal(instructionModal);
-            openModal(cameraModal);
-            startCameraStream();
-        });
-
-        document.getElementById('closeCameraModalBtn').addEventListener('click', () => {
-            closeModal(cameraModal);
-            stopCameraStream();
-        });
-
-        // Setup File system standard selector as hardware/environment fallback
-        document.getElementById('fileFallback').addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    const img = new Image();
-                    img.onload = () => processAcquisitionImage(img);
-                    img.src = event.target.result;
-                };
-                reader.readAsDataURL(file);
-            }
-        });
-
-        // Camera Management Engine
-        async function startCameraStream() {
-            try {
-                cameraFeedback.classList.add('hidden');
-                activeStream = await navigator.mediaDevices.getUserMedia({
-                    video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-                });
-                videoFeed.srcObject = activeStream;
-            } catch (err) {
-                console.error("Camera connection error: ", err);
-                cameraFeedback.textContent = "Não foi possível acessar a câmera. Utilize a importação de arquivo abaixo.";
-                cameraFeedback.classList.remove('hidden');
+            if (transitions > maxTransitions) {
+                maxTransitions = transitions;
+                bestRow = r;
             }
         }
 
-        function stopCameraStream() {
-            if (activeStream) {
-                activeStream.getTracks().forEach(track => track.stop());
-                activeStream = null;
-            }
-        }
+        // 2. Análise da Colorimetria no Fluido
+        let colorData = analyzeFluidColor(src, bestRow);
 
-        document.getElementById('captureBtn').addEventListener('click', () => {
-            if (!activeStream) return;
-            const canvas = document.getElementById('processingCanvas');
-            canvas.width = videoFeed.videoWidth || 640;
-            canvas.height = videoFeed.videoHeight || 480;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(videoFeed, 0, 0, canvas.width, canvas.height);
-            
-            const img = new Image();
-            img.onload = () => processAcquisitionImage(img);
-            img.src = canvas.toDataURL('image/jpeg');
-        });
+        // 3. Estimativa por Interpolação Linear e Escala Bottom-Up
+        let minV = parseFloat(document.getElementById('minVol').value);
+        let maxV = parseFloat(document.getElementById('maxVol').value);
+        let stepV = parseFloat(document.getElementById('stepVol').value);
 
-        // Section 3 & 4: Computer Vision Input Filter validation & Triple Valuation Engine
-        function processAcquisitionImage(imageObj) {
-            const canvas = document.getElementById('processingCanvas');
-            canvas.width = imageObj.width;
-            canvas.height = imageObj.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(imageObj, 0, 0);
-            
-            const srcData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-            
-            // 3. Validação Automática de Qualidade
-            const checkBlur = calculateLaplacianVariance(srcData);
-            const checkBrightness = calculateAverageLuminosity(srcData);
-            const skewAngle = estimateSkewAngle(srcData); // Simulated skew parsing
-            
-            cameraFeedback.classList.add('hidden');
-            
-            if (checkBlur < 10) { // Blur threshold indicator
-                showAcquisitionError("A imagem está muito borrada. Segure firmemente o celular e tente novamente.");
-                return;
-            }
-            if (checkBrightness < 45 || checkBrightness > 240) {
-                showAcquisitionError("Iluminação insuficiente. Use o flash ou melhore a luz ambiente.");
-                return;
-            }
-            if (Math.abs(skewAngle) > 3) {
-                showAcquisitionError("Ângulo de inclinação superior a 3° detectado. Centralize o coletor no suporte.");
-                return;
-            }
-            
-            // 4. Motor de Processamento de Imagem (Triple Validation) & Análise Cromática
-            lastCapturedImageData = canvas.toDataURL('image/jpeg');
-            
-            // Method 1, 2, 3 Simulation based on hardware fixed context rules
-            const parsedVolume = simulateTripleValidationVolume(patientData.maxVolume);
-            const colorResult = extractCentralChromaticValue(srcData);
-            
-            // Prefill modal results
-            computedVolume.value = parsedVolume;
-            urineColorSelect.value = colorResult.label;
-            colorIndicator.style.backgroundColor = colorResult.hex;
-            
-            // Toggle view panels
-            closeModal(cameraModal);
-            stopCameraStream();
-            openModal(clinicalModal);
-        }
+        let heightRatio = 1.0 - (bestRow / rows);
+        let rawVol = minV + (heightRatio * (maxV - minV));
+        let estimatedVol = Math.round(rawVol / stepV) * stepV;
+        estimatedVol = Math.max(minV, Math.min(maxV, estimatedVol));
 
-        function showAcquisitionError(msg) {
-            cameraFeedback.textContent = msg;
-            cameraFeedback.classList.remove('hidden');
-        }
+        // Desenha marcação no Canvas Output
+        let p1 = new cv.Point(0, bestRow);
+        let p2 = new cv.Point(cols, bestRow);
+        cv.line(dst, p1, p2, new cv.Scalar(255, 0, 0, 255), 3);
 
-        // Mathematical Helpers for Analytics Engine
-        function calculateLaplacianVariance(imageData) {
-            // Simplified gray variance check acting as contrast/blur proxy indicator
-            let data = imageData.data;
-            let total = 0, sum = 0;
-            for (let i = 0; i < data.length; i += 40) {
-                let v = (data[i] + data[i+1] + data[i+2]) / 3;
-                sum += v;
-                total++;
-            }
-            let mean = sum / total;
-            let varianceSum = 0;
-            for (let i = 0; i < data.length; i += 40) {
-                let v = (data[i] + data[i+1] + data[i+2]) / 3;
-                varianceSum += Math.pow(v - mean, 2);
-            }
-            return Math.sqrt(varianceSum / total);
-        }
+        cv.imshow('canvasOutput', dst);
 
-        function calculateAverageLuminosity(imageData) {
-            let data = imageData.data;
-            let sum = 0, count = 0;
-            for (let i = 0; i < data.length; i += 20) {
-                sum += (0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2]);
-                count++;
-            }
-            return sum / count;
-        }
+        // Libera memória C++
+        src.delete(); dst.delete(); gray.delete(); edges.delete();
 
-        function estimateSkewAngle(imageData) {
-            // Returns deterministic mock valid offset for sandbox profile
-            return Math.random() * 4 - 2; 
-        }
-
-        function simulateTripleValidationVolume(maxVol) {
-            // Proportional algorithmic simulator representing gradient alignment
-            return Math.round((Math.random() * 0.4 + 0.2) * maxVol / 10) * 10;
-        }
-
-        function extractCentralChromaticValue(imageData) {
-            // Colors mapping simulation
-            const palette = [
-                { label: "Amarelo Claro", hex: "#ffeb99" },
-                { label: "Amarelo Concentrado", hex: "#f1c40f" },
-                { label: "Âmbar / Escura", hex: "#d35400" },
-                { label: "Clara / Transparente", hex: "#fcfbe3" }
-            ];
-            return palette[Math.floor(Math.random() * palette.length)];
-        }
-
-        // Section 5: Lógica de Débito Urinário e Esvaziamento
-        clinicalForm.addEventListener('submit', (e) => {
-            e.preventDefault();
-            
-            const timestamp = new Date().toISOString();
-            const volume = parseFloat(computedVolume.value);
-            const color = urineColorSelect.value;
-            const odor = document.getElementById('urineOdor').value;
-            
-            const symptoms = [];
-            document.querySelectorAll('#clinicalForm input[type="checkbox"]:checked').forEach(cb => {
-                symptoms.push(cb.value);
-            });
-
-            const wasEmptied = document.querySelector('input[name="wasEmptied"]:checked').value === 'sim';
-            const clearTime = wasEmptied ? document.getElementById('emptyingTime').value : null;
-
-            // Compute Debit output based on physiological timeframe rules
-            let debit = 0;
-            if (logs.length > 0) {
-                // Find last entry point or last empty point context
-                let lastTime = new Date(logs[logs.length - 1].timestamp);
-                let hoursDiff = (new Date(timestamp) - lastTime) / (1000 * 60 * 60);
-                if (hoursDiff <= 0) hoursDiff = 1; // Safeguard bounds
-                
-                debit = volume / (patientData.weight * hoursDiff);
-            } else {
-                debit = volume / (patientData.weight * 1); // Baseline index multiplier
-            }
-
-            const newLog = {
-                timestamp,
-                volume,
-                color,
-                odor,
-                symptoms,
-                debit: parseFloat(debit.toFixed(2)),
-                wasEmptied,
-                clearTime,
-                imageSnapshot: lastCapturedImageData
-            };
-
-            logs.push(newLog);
-            localStorage.setItem('urologger_logs', JSON.stringify(logs));
-            
-            // Clean interface variables
-            clinicalForm.reset();
-            document.getElementById('emptyingTimeContainer').classList.add('hidden');
-            closeModal(clinicalModal);
-            
-            updateTableAndStats();
-            updateChartData();
-        });
-
-        function updateTableAndStats() {
-            historyTableBody.innerHTML = '';
-            let totalVolume = 0;
-            let lastDebit = 0;
-
-            // Sorting reverse chronological logs execution mapping
-            [...logs].reverse().forEach((log, index) => {
-                totalVolume += log.volume;
-                if(index === 0) lastDebit = log.debit;
-
-                const tr = document.createElement('tr');
-                tr.className = "hover:bg-slate-50 transition border-b border-slate-100";
-                
-                const formattedDate = new Date(log.timestamp).toLocaleString('pt-BR');
-                const symptomsList = log.symptoms.length > 0 ? log.symptoms.join(', ') : 'Nenhum';
-
-                tr.innerHTML = `
-                    <td class="p-4 font-medium text-slate-900">${formattedDate} ${log.wasEmptied ? '<span class="ml-1.5 inline-flex items-center rounded-md bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-700 ring-1 ring-inset ring-emerald-600/10">Esvaziado</span>' : ''}</td>
-                    <td class="p-4 font-bold">${log.volume} ml</td>
-                    <td class="p-4"><span class="inline-flex items-center gap-1.5"><span class="w-3 h-3 rounded-full border border-slate-300" style="background-color: ${getColorHex(log.color)}"></span>${log.color}</span></td>
-                    <td class="p-4 font-semibold text-indigo-600">${log.debit} ml/kg/h</td>
-                    <td class="p-4 text-xs text-slate-500"><strong>Odor:</strong> ${log.odor}<br><strong>Sintomas:</strong> ${symptomsList}</td>
-                    <td class="p-4"><button onclick="deleteLog(${logs.length - 1 - index})" class="text-red-500 hover:text-red-700 cursor-pointer">Excluir</button></td>
-                `;
-                historyTableBody.appendChild(tr);
-            });
-
-            document.getElementById('statLastOutput').innerHTML = `${lastDebit.toFixed(2)} <span class="text-sm font-normal text-slate-500">ml/kg/h</span>`;
-            document.getElementById('statTotalVolume').innerHTML = `${totalVolume} <span class="text-sm font-normal text-slate-500">ml</span>`;
-        }
-
-        function getColorHex(label) {
-            if (label.includes("Clara")) return "#fcfbe3";
-            if (label.includes("Claro")) return "#ffeb99";
-            if (label.includes("Concentrado")) return "#f1c40f";
-            if (label.includes("Âmbar")) return "#d35400";
-            if (label.includes("Avermelhada")) return "#e74c3c";
-            return "#e2e8f0";
-        }
-
-        window.deleteLog = function(index) {
-            if(confirm("Tem certeza que deseja excluir esta medição?")) {
-                logs.splice(index, 1);
-                localStorage.setItem('urologger_logs', JSON.stringify(logs));
-                updateTableAndStats();
-                updateChartData();
-            }
+        // Armazena resultado temporário
+        activeProcessingResult = {
+            timestamp: timestamp,
+            volume: estimatedVol,
+            colorName: colorData.name,
+            colorHex: colorData.hex
         };
 
-        // Section 7: Exportação e Relatórios
-        document.getElementById('exportCsvBtn').addEventListener('click', () => {
-            if (logs.length === 0) return alert("Nenhum dado disponível para exportação.");
-            
-            let csvContent = "data:text/csv;charset=utf-8,";
-            csvContent += "Data/Hora,Volume(ml),Cor,Debito(ml/kg/h),Odor,Sintomas,Esvaziado
-";
-            
-            logs.forEach(l => {
-                const row = `"${new Date(l.timestamp).toLocaleString('pt-BR')}",${l.volume},"${l.color}",${l.debit},"${l.odor}","${l.symptoms.join('|')}",${l.wasEmptied}`;
-                csvContent += row + "
-";
-            });
-            
-            const encodedUri = encodeURI(csvContent);
-            const link = document.createElement("a");
-            link.setAttribute("href", encodedUri);
-            link.setAttribute("download", `urologger_export_${patientData.name.replace(/\s+/g, '_')}.csv`);
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        });
+        // Exibe na UI para validação do usuário
+        document.getElementById('outVol').innerText = estimatedVol;
+        document.getElementById('outColorText').innerText = colorData.name;
+        document.getElementById('outColorBadge').style.backgroundColor = colorData.hex;
+        document.getElementById('clinicalPanel').style.display = 'block';
+    };
+}
 
-        document.getElementById('exportPdfBtn').addEventListener('click', () => {
-            if (logs.length === 0) return alert("Não há registros para gerar o relatório.");
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
+function analyzeFluidColor(srcMat, liquidRow) {
+    // Amostragem na região central do líquido
+    let sampleRow = Math.min(srcMat.rows - 10, liquidRow + 20);
+    let sampleCol = Math.floor(srcMat.cols / 2);
+    let pixel = srcMat.ucharPtr(sampleRow, sampleCol); // RGBA
 
-            // PDF Formatting Headers setup block
-            doc.setFont("Helvetica", "bold");
-            doc.setFontSize(22);
-            doc.text("Relatório Clínico Urologger AI", 14, 20);
-            
-            doc.setFontSize(10);
-            doc.setFont("Helvetica", "normal");
-            doc.text(`Paciente: ${patientData.name}`, 14, 30);
-            doc.text(`Nascimento: ${new Date(patientData.dob).toLocaleDateString('pt-BR')}`, 14, 35);
-            doc.text(`Peso: ${patientData.weight} kg | Altura: ${patientData.height} cm`, 14, 40);
-            doc.line(14, 45, 196, 45);
+    let r = pixel[0], g = pixel[1], b = pixel[2];
 
-            // Populate table elements simply into layout
-            doc.setFontSize(12);
-            doc.setFont("Helvetica", "bold");
-            doc.text("Histórico de Medições", 14, 55);
-            
-            doc.setFontSize(9);
-            let y = 65;
-            doc.text("Data/Hora", 14, y);
-            doc.text("Vol (ml)", 60, y);
-            doc.text("Cor", 85, y);
-            doc.text("Débito", 130, y);
-            doc.text("Esvaziado", 165, y);
-            doc.line(14, y+2, 196, y+2);
-            
-            y += 8;
-            doc.setFont("Helvetica", "normal");
-            [...logs].reverse().slice(0, 15).forEach(l => {
-                if (y > 270) { doc.addPage(); y = 20; }
-                doc.text(new Date(l.timestamp).toLocaleString('pt-BR'), 14, y);
-                doc.text(`${l.volume}`, 60, y);
-                doc.text(l.color, 85, y);
-                doc.text(`${l.debit} ml/kg/h`, 130, y);
-                doc.text(l.wasEmptied ? "Sim" : "Não", 165, y);
-                y += 6;
-            });
+    // Mapeamento simples de coloração
+    if (r > 200 && g > 180 && b < 100) return { name: "Amarelo Claro / Citrino", hex: "#FCE883" };
+    if (r > 180 && g > 120 && b < 50)  return { name: "Âmbar / Amarelo Escuro", hex: "#FFBF00" };
+    if (r > 150 && g < 80 && b < 80)    return { name: "Avermelhado / Hematúria", hex: "#C34A2C" };
+    return { name: "Castanho / Colúria", hex: "#8B4513" };
+}
 
-            doc.save(`relatorio_urologger_${patientData.name.replace(/\s+/g, '_')}.pdf`);
-        });
+function extractTimestampFromFile(file) {
+    // Parse no nome do arquivo (Formato AAAMMDDHHMM)
+    const name = file.name;
+    const match = name.match(/(\d{4})(\d{2})(\d{2})_?(\d{2})(\d{2})/);
+    if (match) {
+        return new Date(match[1], match[2] - 1, match[3], match[4], match[5]);
+    }
+    return new Date(file.lastModified || Date.now());
+}
 
-        document.getElementById('clearDataBtn').addEventListener('click', () => {
-            if (confirm("Tem certeza que deseja apagar todos os dados locais e configurações do paciente?")) {
-                localStorage.clear();
-                window.location.reload();
-            }
-        });
+function confirmAndSaveRecord() {
+    const weight = parseFloat(document.getElementById('pWeight').value) || 70;
+    
+    // Cálculo do Débito Urinário (mL/kg/h)
+    let debito = "0.00";
+    if (recordsHistory.length > 0) {
+        let lastRecord = recordsHistory[recordsHistory.length - 1];
+        let hoursDiff = (activeProcessingResult.timestamp - lastRecord.timestamp) / (1000 * 60 * 60);
+        if (hoursDiff <= 0) hoursDiff = 1; // Prevenção de divisão por zero
+        debito = (activeProcessingResult.volume / weight / hoursDiff).toFixed(2);
+    }
 
-        // ChartJS Components Handling Pipeline
-        function initChart() {
-            const ctx = document.getElementById('trendChart').getContext('2d');
-            if (trendChart) trendChart.destroy();
-            
-            trendChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: logs.map(l => new Date(l.timestamp).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'})),
-                    datasets: [{
-                        label: 'Volume Urinário (ml)',
-                        data: logs.map(l => l.volume),
-                        borderColor: 'rgb(79, 70, 229)',
-                        backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                        tension: 0.2,
-                        fill: true
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { beginAtZero: true }
-                    }
-                }
-            });
+    // Coleta Sintomas
+    let symptoms = [];
+    if (document.getElementById('symPain').checked) symptoms.push("Disúria");
+    if (document.getElementById('symUrgency').checked) symptoms.push("Urgência");
+    if (document.getElementById('symLumbar').checked) symptoms.push("Dor Lombar");
+    if (document.getElementById('symThirst').checked) symptoms.push("Sede Intensa");
+    symptoms.push(document.getElementById('symOdor').value);
+
+    const record = {
+        ...activeProcessingResult,
+        debito: debito,
+        symptoms: symptoms.join(", ")
+    };
+
+    recordsHistory.push(record);
+    renderHistoryTable();
+    updateChartData();
+    document.getElementById('clinicalPanel').style.display = 'none';
+}
+
+function renderHistoryTable() {
+    const tbody = document.querySelector('#historyTable tbody');
+    tbody.innerHTML = '';
+    recordsHistory.forEach(r => {
+        tbody.innerHTML += `
+            <tr>
+                <td>${r.timestamp.toLocaleString('pt-BR')}</td>
+                <td><strong>${r.volume} mL</strong></td>
+                <td><span class="color-badge" style="background:${r.colorHex}"></span> ${r.colorName}</td>
+                <td>${r.debito}</td>
+                <td><small>${r.symptoms}</small></td>
+            </tr>
+        `;
+    });
+}
+
+function initChart() {
+    const ctx = document.getElementById('debitoChart').getContext('2d');
+    chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Débito (mL/kg/h)',
+                data: [],
+                borderColor: '#0d6efd',
+                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                tension: 0.3,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: { y: { beginAtZero: true } }
         }
+    });
+}
 
-        function updateChartData() {
-            if (!trendChart) return;
-            trendChart.data.labels = logs.map(l => new Date(l.timestamp).toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}));
-            trendChart.data.datasets[0].data = logs.map(l => l.volume);
-            trendChart.update();
-        }
+function updateChartData() {
+    chartInstance.data.labels = recordsHistory.map(r => r.timestamp.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}));
+    chartInstance.data.datasets[0].data = recordsHistory.map(r => r.debito);
+    chartInstance.update();
+}
 
-        // Modal Utility Helpers Animations togglers
-        function openModal(el) {
-            el.classList.remove('pointer-events-none');
-            el.classList.remove('opacity-0');
-        }
-        function closeModal(el) {
-            el.classList.add('pointer-events-none');
-            el.classList.add('opacity-0');
-        }
-        function cancelClinicalModal() {
-            closeModal(clinicalModal);
-            clinicalForm.reset();
-        }
-        document.getElementById('cancelClinicalBtn').addEventListener('click', cancelClinicalModal);
-    </script>
+function generateCSV() {
+    let csv = "Data_Hora,Volume_mL,Coloracao,Debito_mL_kg_h,Sinais_Clinicos\n";
+    recordsHistory.forEach(r => {
+        csv += `"${r.timestamp.toISOString()}","${r.volume}","${r.colorName}","${r.debito}","${r.symptoms}"\n`;
+    });
+    let blob = new Blob([csv], { type: 'text/csv' });
+    let a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `urologger_dados_${Date.now()}.csv`;
+    a.click();
+}
+
+function generatePDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    doc.setFontSize(16);
+    doc.text("Relatório de Monitoramento Urinário - Urologger", 14, 20);
+    
+    doc.setFontSize(10);
+    doc.text(`Paciente: ${document.getElementById('pName').value || 'Não informado'}`, 14, 30);
+    doc.text(`Peso: ${document.getElementById('pWeight').value} kg | Altura: ${document.getElementById('pHeight').value} cm`, 14, 36);
+    
+    let y = 50;
+    doc.text("Histórico de Registros:", 14, y);
+    y += 8;
+
+    recordsHistory.forEach((r, idx) => {
+        doc.text(`${idx + 1}. ${r.timestamp.toLocaleString('pt-BR')} - Vol: ${r.volume}mL | Cor: ${r.colorName} | Débito: ${r.debito} mL/kg/h`, 14, y);
+        y += 6;
+        doc.text(`   Sintomas: ${r.symptoms}`, 14, y);
+        y += 8;
+    });
+
+    doc.save(`urologger_relatorio_${Date.now()}.pdf`);
+}
+</script>
 </body>
 </html>
