@@ -117,7 +117,7 @@ sw.js           service worker, responsável pelo funcionamento offline
 manifest.json   metadados de instalação na tela inicial
 ```
 
-Ao alterar o `index.html`, incremente a versão do cache no `sw.js` (`diurese-v13` → `diurese-v14`). Sem isso, os aparelhos continuam servindo a versão antiga.
+Ao alterar o `index.html`, incremente a versão do cache no `sw.js` (`diurese-v14` → `diurese-v15`). Sem isso, os aparelhos continuam servindo a versão antiga.
 
 ## Histórico de versões
 
@@ -130,6 +130,7 @@ Ao alterar o `index.html`, incremente a versão do cache no `sw.js` (`diurese-v1
 | v11 | Pilha de traços como método principal; OCR como conferência; contagem de baixo só com pilha completa |
 | v12 | Cadastro do coletor por máxima, mínima e escala; recusa abaixo da menor marca |
 | v13 | Crivo de qualidade (contraste, nitidez, inclinação, corte); registro "< mínima"; escala cortada é recusa |
+| v14 | Correção: oito funções apagadas por engano em v10–v13 (diálogo de captura, EXIF, débito, avisos) restauradas; testes de interface automatizados adicionados |
 
 ## Licença
 
