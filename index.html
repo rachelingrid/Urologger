@@ -3,35 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Urologger - Monitoramento Urinário Automatizado</title>
-    
-    <!-- Bootstrap CSS -->
+    <title>Urologger - Captura Direta</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-    <!-- Chart.js & jsPDF -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
     <style>
-        body { background-color: #f8f9fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        body { background-color: #f4f6f9; font-family: system-ui, -apple-system, sans-serif; }
         .card { border: none; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-        #canvasOutput { width: 100%; max-width: 500px; height: auto; border: 2px solid #333; border-radius: 8px; background: #000; }
-        .color-badge { width: 20px; height: 20px; border-radius: 50%; display: inline-block; border: 1px solid #ccc; vertical-align: middle; }
+        #canvasContainer { position: relative; width: 100%; max-width: 480px; margin: auto; }
+        #imageCanvas { width: 100%; height: auto; border: 2px solid #222; border-radius: 8px; background: #111; }
+        .color-badge { width: 22px; height: 22px; border-radius: 50%; display: inline-block; border: 1px solid #ccc; vertical-align: middle; }
     </style>
 </head>
 <body>
 
 <div class="container py-4">
     <header class="d-flex justify-content-between align-items-center pb-3 mb-4 border-bottom">
-        <h3 class="fw-bold text-primary mb-0">Urologger <small class="text-muted fs-6">v1.2</small></h3>
-        <span id="statusEngine" class="badge bg-warning text-dark">Carregando OpenCV.js...</span>
+        <h3 class="fw-bold text-primary mb-0">Urologger <small class="text-muted fs-6">v2.0</small></h3>
+        <span class="badge bg-success">Sistema Ativo</span>
     </header>
 
     <div class="row g-4">
-        <!-- Cadastro e Configurações -->
         <div class="col-lg-4">
             <div class="card p-3 mb-3">
-                <h6 class="fw-bold text-secondary mb-3">1. Dados do Paciente</h6>
+                <h6 class="fw-bold text-secondary mb-3">1. Paciente</h6>
                 <form id="patientForm">
                     <div class="mb-2">
                         <label class="form-label small mb-1">Nome Completo</label>
@@ -44,11 +40,11 @@
                         </div>
                         <div class="col-3">
                             <label class="form-label small mb-1">Peso(kg)</label>
-                            <input type="number" id="pWeight" class="form-control form-control-sm" value="70" step="0.1" required>
+                            <input type="number" id="pWeight" class="form-control form-control-sm" value="70" step="0.1">
                         </div>
                         <div class="col-3">
                             <label class="form-label small mb-1">Alt.(cm)</label>
-                            <input type="number" id="pHeight" class="form-control form-control-sm" value="170" required>
+                            <input type="number" id="pHeight" class="form-control form-control-sm" value="170">
                         </div>
                     </div>
                 </form>
@@ -56,7 +52,7 @@
 
             <div class="card p-3">
                 <h6 class="fw-bold text-secondary mb-3">2. Escala do Coletor</h6>
-                <div class="row g-2 mb-2">
+                <div class="row g-2">
                     <div class="col-4">
                         <label class="form-label small mb-1">Mín (mL)</label>
                         <input type="number" id="minVol" class="form-control form-control-sm" value="100">
@@ -67,43 +63,37 @@
                     </div>
                     <div class="col-4">
                         <label class="form-label small mb-1">Passo (mL)</label>
-                        <input type="number" id="stepVol" class="form-control form-control-sm" value="200">
+                        <input type="number" id="stepVol" class="form-control form-control-sm" value="100">
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Aquisição e Canvas -->
         <div class="col-lg-8">
             <div class="card p-3">
-                <h6 class="fw-bold text-secondary mb-3">3. Aquisição & Processamento</h6>
+                <h6 class="fw-bold text-secondary mb-3">3. Aquisição da Imagem</h6>
                 
-                <div class="row g-2 mb-3">
-                    <div class="col-md-8">
-                        <input type="file" id="imgInput" accept="image/*" class="form-control form-control-sm">
-                    </div>
-                    <div class="col-md-4">
-                        <button id="btnProcess" class="btn btn-primary btn-sm w-100" onclick="triggerGuidanceModal()" disabled>
-                            Analisar Imagem
-                        </button>
-                    </div>
+                <div class="d-grid gap-2 d-md-flex mb-3">
+                    <input type="file" id="cameraInput" accept="image/*" capture="environment" class="d-none" onchange="handleImageUpload(event)">
+                    <button class="btn btn-primary btn-lg w-100" onclick="document.getElementById('cameraInput').click()">
+                        📷 Tirar Foto / Capturar Coletor
+                    </button>
                 </div>
 
-                <div class="text-center">
-                    <canvas id="canvasOutput"></canvas>
+                <div id="canvasContainer" class="text-center">
+                    <canvas id="imageCanvas"></canvas>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Seção Clínica Complementar -->
     <div class="row mt-4" id="clinicalSection" style="display: none;">
         <div class="col-12">
             <div class="card p-4 border-start border-primary border-4">
-                <h5 class="fw-bold mb-3">Resultado da Aferição & Sinais Clínicos</h5>
+                <h5 class="fw-bold mb-3">Resultado Processado</h5>
                 <div class="row g-3">
                     <div class="col-md-4 border-end">
-                        <p class="mb-1 text-muted small">Volume Calculado:</p>
+                        <p class="mb-1 text-muted small">Volume Estimado:</p>
                         <div class="fs-2 fw-bold text-success"><span id="resVol">0</span> <small class="fs-6 text-dark">mL</small></div>
                         <p class="mb-1 text-muted small mt-2">Coloração:</p>
                         <div class="d-flex align-items-center gap-2">
@@ -112,10 +102,10 @@
                         </div>
                     </div>
                     <div class="col-md-8">
-                        <h6>Sintomas Observados</h6>
+                        <h6>Sinais Clínicos e Sintomas</h6>
                         <div class="row g-2 mb-3">
                             <div class="col-6 col-md-4"><input type="checkbox" id="chkPain"> Dor / Disúria</div>
-                            <div class="col-6 col-md-4"><input type="checkbox" id="chkUrgency"> Urgência Miccional</div>
+                            <div class="col-6 col-md-4"><input type="checkbox" id="chkUrgency"> Urgência</div>
                             <div class="col-6 col-md-4"><input type="checkbox" id="chkLumbar"> Dor Lombar</div>
                             <div class="col-6 col-md-4"><input type="checkbox" id="chkThirst"> Sede Intensa</div>
                             <div class="col-md-8">
@@ -126,19 +116,18 @@
                                 </select>
                             </div>
                         </div>
-                        <button class="btn btn-success btn-sm float-end" onclick="saveRecord()">Salvar no Histórico</button>
+                        <button class="btn btn-success float-end" onclick="saveRecord()">Salvar Medição</button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Histórico & Débito Urinário -->
     <div class="row mt-4 g-3">
         <div class="col-lg-7">
             <div class="card p-3">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h6 class="fw-bold text-secondary mb-0">Histórico Temporal</h6>
+                    <h6 class="fw-bold text-secondary mb-0">Histórico de Aferições</h6>
                     <div>
                         <button class="btn btn-outline-danger btn-sm" onclick="exportPDF()">PDF</button>
                         <button class="btn btn-outline-success btn-sm" onclick="exportCSV()">CSV</button>
@@ -152,7 +141,7 @@
                                 <th>Volume</th>
                                 <th>Cor</th>
                                 <th>Débito (mL/kg/h)</th>
-                                <th>Sinais</th>
+                                <th>Sintomas</th>
                             </tr>
                         </thead>
                         <tbody></tbody>
@@ -169,160 +158,119 @@
     </div>
 </div>
 
-<!-- Modal Orientativo -->
-<div class="modal fade" id="guideModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header bg-primary text-white py-2">
-        <h6 class="modal-title">Orientação de Aquisição</h6>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body small">
-        <ul class="mb-0">
-            <li>Encaixe o smartphone firmemente no suporte rígido paralelo à bolsa.</li>
-            <li>Evite sombras fortes e reflexos diretos no plástico do coletor.</li>
-            <li>Aguarde o nível do líquido estabilizar totalmente.</li>
-        </ul>
-      </div>
-      <div class="modal-footer py-2">
-        <button type="button" class="btn btn-primary btn-sm" onclick="processImage()">Confirmar e Processar</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Script OpenCV Assíncrono Seguro -->
-<script async src="https://docs.opencv.org/4.7.0/opencv.js" onload="onOpenCvReady();"></script>
-
 <script>
-let isOpenCvReady = false;
 let recordsHistory = [];
 let chartInstance = null;
 let currentResult = null;
+let loadedImage = null;
 
-function onOpenCvReady() {
-    isOpenCvReady = true;
-    document.getElementById('statusEngine').innerText = "Motor de Visão Pronto";
-    document.getElementById('statusEngine').className = "badge bg-success";
-    document.getElementById('btnProcess').disabled = false;
+window.onload = function() {
     initChart();
-}
+};
 
-function triggerGuidanceModal() {
-    const fileInput = document.getElementById('imgInput');
-    if (!fileInput.files || fileInput.files.length === 0) {
-        alert("Selecione um arquivo de imagem primeiro.");
-        return;
-    }
-    const modal = new bootstrap.Modal(document.getElementById('guideModal'));
-    modal.show();
-}
+function handleImageUpload(event) {
+    const file = event.target.files[0];
+    if (!file) return;
 
-function processImage() {
-    bootstrap.Modal.getInstance(document.getElementById('guideModal')).hide();
-    
-    const file = document.getElementById('imgInput').files[0];
-    const timestamp = parseTimestamp(file);
-    const img = new Image();
-    img.src = URL.createObjectURL(file);
-
-    img.onload = function() {
-        // Redimensionar para no máximo 800px de largura para evitar travamento de memória
-        const maxDim = 800;
-        let scale = Math.min(maxDim / img.width, maxDim / img.height, 1);
-        
-        let canvas = document.createElement('canvas');
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        let ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-        // Processar no OpenCV
-        let src = cv.imread(canvas);
-        let dst = src.clone();
-
-        let gray = new cv.Mat();
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-        cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
-
-        let edges = new cv.Mat();
-        cv.Canny(gray, edges, 40, 120);
-
-        // Varredura da Linha do Nível Hidroaéreo na ROI (Região Central da Bolsa)
-        let rows = edges.rows;
-        let cols = edges.cols;
-        let bestRow = Math.floor(rows * 0.5);
-        let maxTransitions = 0;
-
-        for (let r = Math.floor(rows * 0.25); r < Math.floor(rows * 0.85); r++) {
-            let count = 0;
-            for (let c = Math.floor(cols * 0.35); c < Math.floor(cols * 0.65); c++) {
-                if (edges.ucharPtr(r, c)[0] > 200) count++;
-            }
-            if (count > maxTransitions) {
-                maxTransitions = count;
-                bestRow = r;
-            }
-        }
-
-        // Análise Colorimétrica
-        let colorData = getColorHSV(src, bestRow);
-
-        // Estimativa do Volume por Interpolação Linear
-        let minV = parseFloat(document.getElementById('minVol').value);
-        let maxV = parseFloat(document.getElementById('maxVol').value);
-        let stepV = parseFloat(document.getElementById('stepVol').value);
-
-        let heightRatio = 1.0 - (bestRow / rows);
-        let calculatedVol = minV + (heightRatio * (maxV - minV));
-        let adjustedVol = Math.round(calculatedVol / stepV) * stepV;
-        adjustedVol = Math.max(minV, Math.min(maxV, adjustedVol));
-
-        // Desenhar linha do nível detectado no Canvas de saída
-        let p1 = new cv.Point(0, bestRow);
-        let p2 = new cv.Point(cols, bestRow);
-        cv.line(dst, p1, p2, new cv.Scalar(255, 0, 0, 255), 3);
-
-        cv.imshow('canvasOutput', dst);
-
-        // Libera memória C++ do OpenCV
-        src.delete(); dst.delete(); gray.delete(); edges.delete();
-
-        // Atualiza interface
-        currentResult = {
-            timestamp: timestamp,
-            volume: adjustedVol,
-            colorName: colorData.name,
-            colorHex: colorData.hex
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        loadedImage = new Image();
+        loadedImage.onload = function() {
+            processAndDrawImage();
         };
-
-        document.getElementById('resVol').innerText = adjustedVol;
-        document.getElementById('resColorText').innerText = colorData.name;
-        document.getElementById('resColorBadge').style.backgroundColor = colorData.hex;
-        document.getElementById('clinicalSection').style.display = 'block';
+        loadedImage.src = e.target.result;
     };
+    reader.readAsDataURL(file);
 }
 
-function getColorHSV(srcMat, liquidRow) {
-    let sampleRow = Math.min(srcMat.rows - 5, liquidRow + 15);
-    let sampleCol = Math.floor(srcMat.cols / 2);
-    let pixel = srcMat.ucharPtr(sampleRow, sampleCol); // RGBA
+function processAndDrawImage() {
+    const canvas = document.getElementById('imageCanvas');
+    const ctx = canvas.getContext('2d');
 
-    let r = pixel[0], g = pixel[1], b = pixel[2];
+    // Redimensionar mantendo proporção para no máximo 600px
+    const maxDim = 600;
+    let width = loadedImage.width;
+    let height = loadedImage.height;
 
-    if (r > 200 && g > 180 && b < 100) return { name: "Amarelo Claro / Citrino", hex: "#FDFD96" };
-    if (r > 180 && g > 120 && b < 50)  return { name: "Âmbar / Amarelo Escuro", hex: "#FFBF00" };
-    if (r > 150 && g < 80 && b < 80)    return { name: "Avermelhado / Hematúria", hex: "#C34A2C" };
-    return { name: "Castanho / Colúria", hex: "#8B4513" };
-}
-
-function parseTimestamp(file) {
-    const name = file.name;
-    const match = name.match(/(\d{4})(\d{2})(\d{2})_?(\d{2})(\d{2})/);
-    if (match) {
-        return new Date(match[1], match[2] - 1, match[3], match[4], match[5]);
+    if (width > height) {
+        if (width > maxDim) { height *= maxDim / width; width = maxDim; }
+    } else {
+        if (height > maxDim) { width *= maxDim / height; height = maxDim; }
     }
-    return new Date(file.lastModified || Date.now());
+
+    canvas.width = width;
+    canvas.height = height;
+
+    // Desenhar a imagem capturada no canvas
+    ctx.drawImage(loadedImage, 0, 0, width, height);
+
+    // Processamento da imagem direto na Canvas API
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const data = imageData.data;
+
+    // Algoritmo de busca por contraste do menisco na ROI central
+    let bestY = Math.floor(height * 0.5);
+    let maxDiff = 0;
+
+    for (let y = Math.floor(height * 0.2); y < Math.floor(height * 0.85); y++) {
+        let diffRow = 0;
+        for (let x = Math.floor(width * 0.3); x < Math.floor(width * 0.7); x++) {
+            let i = (y * width + x) * 4;
+            let iBelow = ((y + 2) * width + x) * 4;
+
+            // Diferença de intensidade R+G+B entre linhas adjacentes
+            let brightness1 = data[i] + data[i+1] + data[i+2];
+            let brightness2 = data[iBelow] + data[iBelow+1] + data[iBelow+2];
+            diffRow += Math.abs(brightness1 - brightness2);
+        }
+        if (diffRow > maxDiff) {
+            maxDiff = diffRow;
+            bestY = y;
+        }
+    }
+
+    // Amostragem de Cor no Líquido (Logo abaixo do nível detectado)
+    let samplePixel = (Math.min(height - 1, bestY + 15) * width + Math.floor(width / 2)) * 4;
+    let r = data[samplePixel], g = data[samplePixel + 1], b = data[samplePixel + 2];
+    let colorData = classifyColor(r, g, b);
+
+    // Estimativa de Volume por Escala
+    let minV = parseFloat(document.getElementById('minVol').value);
+    let maxV = parseFloat(document.getElementById('maxVol').value);
+    let stepV = parseFloat(document.getElementById('stepVol').value);
+
+    let heightRatio = 1.0 - (bestY / height);
+    let rawVol = minV + (heightRatio * (maxV - minV));
+    let adjustedVol = Math.round(rawVol / stepV) * stepV;
+    adjustedVol = Math.max(minV, Math.min(maxV, adjustedVol));
+
+    // Desenhar a linha vermelha do nível no Canvas
+    ctx.strokeStyle = '#ff0000';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(0, bestY);
+    ctx.lineTo(width, bestY);
+    ctx.stroke();
+
+    // Atualizar UI
+    currentResult = {
+        timestamp: new Date(),
+        volume: adjustedVol,
+        colorName: colorData.name,
+        colorHex: colorData.hex
+    };
+
+    document.getElementById('resVol').innerText = adjustedVol;
+    document.getElementById('resColorText').innerText = colorData.name;
+    document.getElementById('resColorBadge').style.backgroundColor = colorData.hex;
+    document.getElementById('clinicalSection').style.display = 'block';
+}
+
+function classifyColor(r, g, b) {
+    if (r > 190 && g > 170 && b < 110) return { name: "Amarelo Claro / Citrino", hex: "#FDFD96" };
+    if (r > 170 && g > 110 && b < 50)  return { name: "Âmbar / Amarelo Escuro", hex: "#FFBF00" };
+    if (r > 140 && g < 70 && b < 70)    return { name: "Avermelhado / Hematúria", hex: "#C34A2C" };
+    return { name: "Castanho / Colúria", hex: "#8B4513" };
 }
 
 function saveRecord() {
@@ -343,13 +291,7 @@ function saveRecord() {
     if (document.getElementById('chkThirst').checked) symptoms.push("Sede Intensa");
     symptoms.push(document.getElementById('selectOdor').value);
 
-    const record = {
-        ...currentResult,
-        debito: debito,
-        symptoms: symptoms.join(", ")
-    };
-
-    recordsHistory.push(record);
+    recordsHistory.push({ ...currentResult, debito: debito, symptoms: symptoms.join(", ") });
     renderTable();
     updateChart();
     document.getElementById('clinicalSection').style.display = 'none';
@@ -361,7 +303,7 @@ function renderTable() {
     recordsHistory.forEach(r => {
         tbody.innerHTML += `
             <tr>
-                <td>${r.timestamp.toLocaleString('pt-BR')}</td>
+                <td>${r.timestamp.toLocaleTimeString('pt-BR')}</td>
                 <td><strong>${r.volume} mL</strong></td>
                 <td><span class="color-badge" style="background:${r.colorHex}"></span> ${r.colorName}</td>
                 <td>${r.debito}</td>
@@ -375,15 +317,7 @@ function initChart() {
     const ctx = document.getElementById('debitoChart').getContext('2d');
     chartInstance = new Chart(ctx, {
         type: 'line',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'Débito (mL/kg/h)',
-                data: [],
-                borderColor: '#0d6efd',
-                tension: 0.3
-            }]
-        },
+        data: { labels: [], datasets: [{ label: 'Débito (mL/kg/h)', data: [], borderColor: '#0d6efd', tension: 0.3 }] },
         options: { responsive: true, scales: { y: { beginAtZero: true } } }
     });
 }
@@ -395,31 +329,25 @@ function updateChart() {
 }
 
 function exportCSV() {
-    let csv = "Data_Hora,Volume_mL,Cor,Debito_mL_kg_h,Sinais_Clinicos\n";
+    let csv = "Data_Hora,Volume_mL,Cor,Debito,Sinais\n";
     recordsHistory.forEach(r => {
         csv += `"${r.timestamp.toISOString()}","${r.volume}","${r.colorName}","${r.debito}","${r.symptoms}"\n`;
     });
     let blob = new Blob([csv], { type: 'text/csv' });
-    let a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `urologger_export_${Date.now()}.csv`;
-    a.click();
+    let a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `urologger_${Date.now()}.csv`; a.click();
 }
 
 function exportPDF() {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
-    doc.setFontSize(16);
-    doc.text("Relatório de Monitoramento Urinário - Urologger", 14, 20);
-    doc.setFontSize(10);
-    doc.text(`Paciente: ${document.getElementById('pName').value || 'Não Informado'}`, 14, 30);
-    
+    doc.setFontSize(16); doc.text("Relatório Urologger", 14, 20);
+    doc.setFontSize(10); doc.text(`Paciente: ${document.getElementById('pName').value || 'N/A'}`, 14, 30);
     let y = 45;
     recordsHistory.forEach((r, idx) => {
-        doc.text(`${idx + 1}. ${r.timestamp.toLocaleString('pt-BR')} | Vol: ${r.volume} mL | Cor: ${r.colorName} | Débito: ${r.debito} mL/kg/h`, 14, y);
+        doc.text(`${idx + 1}. ${r.timestamp.toLocaleString('pt-BR')} | Vol: ${r.volume} mL | Cor: ${r.colorName} | Débito: ${r.debito}`, 14, y);
         y += 7;
     });
-    doc.save(`urologger_relatorio_${Date.now()}.pdf`);
+    doc.save(`urologger_${Date.now()}.pdf`);
 }
 </script>
 </body>
