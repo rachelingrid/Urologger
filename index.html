@@ -3,129 +3,481 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Urologger AI - Painel Clínico</title>
-    <!-- Tailwind CSS v4 via CDN -->
-    <script src="https://tailwindcss.com"></script>
-    <!-- Chart.js para o Gráfico de Tendência -->
-    <script src="https://jsdelivr.net"></script>
-    <!-- Tesseract.js para OCR -->
-    <script src="https://jsdelivr.net"></script>
-    <!-- jsPDF para Relatórios Médicos -->
-    <script src="https://cloudflare.com"></script>
+    <title>Urologger - Sistema de Processamento de Urina</title>
+
+    <!-- Bootstrap 5 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Chart.js & jsPDF -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Tesseract.js (OCR) -->
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <!-- OpenCV.js -->
+    <script async src="https://docs.opencv.org/4.7.0/opencv.js" onload="onOpenCvReady();" type="text/javascript"></script>
+
+    <style>
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+        .card { border: none; border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
+        #canvasOutput { width: 100%; max-width: 480px; height: auto; border: 2px solid #2b2b2b; border-radius: 8px; background-color: #000; }
+        .color-badge { width: 22px; height: 22px; border-radius: 50%; display: inline-block; vertical-align: middle; border: 1px solid #ccc; }
+        .status-dot { height: 10px; width: 10px; background-color: #ffc107; border-radius: 50%; display: inline-block; }
+        .status-ready { background-color: #198754; }
+    </style>
 </head>
-<body class="bg-slate-50 font-sans text-slate-800 antialiased">
+<body>
 
-    <!-- Banner de Privacidade Obrigatório -->
-    <div id="privacy-banner" class="bg-amber-50 border-b border-amber-200 px-4 py-3 text-amber-900 text-sm flex justify-between items-center shadow-xs">
-        <p>⚠️ <strong>Aviso de Segurança:</strong> Os dados são armazenados localmente neste dispositivo por privacidade. Se você limpar o cache do navegador, os dados serão perdidos.</p>
-        <button onclick="document.getElementById('privacy-banner').remove()" class="font-bold text-amber-700 hover:text-amber-900 ml-4">✕</button>
-    </div>
+<div class="container py-4">
+    <!-- Header -->
+    <header class="d-flex justify-content-between align-items-center pb-3 mb-4 border-bottom">
+        <div>
+            <h2 class="fw-bold text-primary mb-0">Urologger</h2>
+            <small class="text-muted">Análise Automatizada do Coletor Urinário</small>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span id="statusDot" class="status-dot"></span>
+            <span id="statusText" class="small text-muted">Carregando motores de visão...</span>
+        </div>
+    </header>
 
-    <main class="max-w-7xl mx-auto p-4 md:p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        <!-- COLUNA 1: Configurações & Entrada -->
-        <div class="space-y-6 lg:col-span-1">
-            <!-- 1. Identificação do Paciente -->
-            <section class="bg-white p-5 rounded-xl shadow-xs border border-slate-100">
-                <h2 class="text-lg font-bold text-slate-900 border-b pb-2 mb-4">1. Identificação do Paciente</h2>
-                <div class="space-y-3">
-                    <div>
-                        <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Nome Completo</label>
-                        <input type="text" id="paciente-nome" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-hidden" placeholder="Ex: João da Silva">
+    <div class="row g-4">
+        <!-- Coluna 1: Cadastro e Configurações -->
+        <div class="col-lg-4">
+            <div class="card p-3 mb-3">
+                <h6 class="card-title text-primary fw-semibold mb-3">1. Identificação do Paciente</h6>
+                <form id="patientForm">
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">Nome Completo</label>
+                        <input type="text" id="pName" class="form-control form-control-sm" placeholder="Ex: Paciente A" required>
                     </div>
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Data Nasc.</label>
-                            <input type="date" id="paciente-nasc" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-hidden">
+                    <div class="row g-2 mb-2">
+                        <div class="col-6">
+                            <label class="form-label small mb-1">Data Nasc.</label>
+                            <input type="date" id="pDob" class="form-control form-control-sm" required>
                         </div>
-                        <div>
-                            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Peso (kg)</label>
-                            <input type="number" id="paciente-peso" value="70" step="0.1" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-hidden">
+                        <div class="col-3">
+                            <label class="form-label small mb-1">Peso(kg)</label>
+                            <input type="number" id="pWeight" class="form-control form-control-sm" value="70" step="0.1" required>
+                        </div>
+                        <div class="col-3">
+                            <label class="form-label small mb-1">Alt.(cm)</label>
+                            <input type="number" id="pHeight" class="form-control form-control-sm" value="170" required>
                         </div>
                     </div>
-                    <div>
-                        <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Altura (cm)</label>
-                        <input type="number" id="paciente-altura" value="170" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-hidden">
-                    </div>
-                </div>
-            </section>
+                </form>
+            </div>
 
-            <!-- 2. Parâmetros do Coletor -->
-            <section class="bg-white p-5 rounded-xl shadow-xs border border-slate-100">
-                <h2 class="text-lg font-bold text-slate-900 border-b pb-2 mb-4">2. Parâmetros do Coletor</h2>
-                <div class="space-y-3">
-                    <div>
-                        <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Modelo / Tipo de Coletor</label>
-                        <select id="coletor-tipo" class="w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-hidden">
-                            <option value="2000">Coletor Rígido 2000 mL (Escala 100ml)</option>
-                            <option value="500">Coletor Pediátrico Rígido 500 mL (Escala 50ml)</option>
-                        </select>
+            <div class="card p-3">
+                <h6 class="card-title text-primary fw-semibold mb-3">2. Parâmetros do Coletor</h6>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Modelo / Tipo de Coletor</label>
+                    <input type="text" id="collectorModel" class="form-control form-control-sm" value="Coletor Fixo 2000 mL">
+                </div>
+                <div class="row g-2">
+                    <div class="col-4">
+                        <label class="form-label small mb-1">Nível Mín.</label>
+                        <input type="number" id="minVol" class="form-control form-control-sm" value="100">
                     </div>
-                    <div class="grid grid-cols-3 gap-2 text-center text-xs bg-slate-50 p-2 rounded-lg text-slate-600">
-                        <div>Mín: <span id="col-min" class="font-bold">100mL</span></div>
-                        <div>Máx: <span id="col-max" class="font-bold">2000mL</span></div>
-                        <div>Passo: <span id="col-passo" class="font-bold">100mL</span></div>
+                    <div class="col-4">
+                        <label class="form-label small mb-1">Nível Máx.</label>
+                        <input type="number" id="maxVol" class="form-control form-control-sm" value="2000">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small mb-1">Passo (mL)</label>
+                        <input type="number" id="stepVol" class="form-control form-control-sm" value="100">
                     </div>
                 </div>
-            </section>
-
-            <!-- 3. Captura & Processamento -->
-            <section class="bg-white p-5 rounded-xl shadow-xs border border-slate-100 text-center">
-                <h2 class="text-lg font-bold text-slate-900 border-b pb-2 mb-4 text-left">3. Captura & Processamento</h2>
-                <div class="border-2 border-dashed border-slate-200 rounded-xl p-4 bg-slate-50 cursor-pointer hover:bg-slate-100 transition relative" onclick="document.getElementById('camera-file').click()">
-                    <input type="file" id="camera-file" accept="image/*" class="hidden" onchange="previewImagem(event)">
-                    <div id="preview-container" class="flex flex-col items-center justify-center min-h-[140px]">
-                        <span class="text-4xl text-slate-400 mb-2">📷</span>
-                        <p class="text-sm text-slate-500 font-medium">Tirar Foto ou Selecionar Imagem</p>
-                        <p class="text-xs text-slate-400 mt-1">Insira a foto do suporte Urologger</p>
-                    </div>
-                    <canvas id="process-canvas" class="hidden w-full h-auto rounded-lg shadow-xs"></canvas>
-                </div>
-                <button type="button" id="btn-processar" onclick="abrirInstrucoes()" class="w-full bg-blue-600 text-white rounded-lg py-2.5 font-bold mt-4 hover:bg-blue-700 transition shadow-sm text-sm">
-                    Processar Imagem com Inteligência Artificial
-                </button>
-            </section>
+            </div>
         </div>
 
-        <!-- COLUNA 2 & 3: Resultados e Histórico -->
-        <div class="lg:col-span-2 space-y-6">
-            
-            <!-- 4. Aferição & Sintomas -->
-            <section class="bg-white p-6 rounded-xl shadow-xs border border-slate-100">
-                <h2 class="text-lg font-bold text-slate-900 border-b pb-3 mb-4">4. Aferição da Imagem & Registro de Sintomas</h2>
+        <!-- Coluna 2: Aquisição da Imagem e Canvas -->
+        <div class="col-lg-8">
+            <div class="card p-3">
+                <h6 class="card-title text-primary fw-semibold mb-3">3. Captura & Processamento</h6>
                 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                    <div class="bg-blue-50/50 p-4 rounded-xl border border-blue-100 text-center">
-                        <p class="text-xs font-semibold uppercase text-slate-500 mb-1">Volume Medido Automático</p>
-                        <p class="text-3xl font-extrabold text-blue-700"><span id="resultado-volume">0</span> <span class="text-lg font-normal">mL</span></p>
+                <div class="row align-items-center mb-3">
+                    <div class="col-md-8">
+                        <input type="file" id="imgUploader" accept="image/*" class="form-control form-control-sm">
                     </div>
-                    <div class="bg-emerald-50/50 p-4 rounded-xl border border-emerald-100 text-center flex flex-col justify-center items-center">
-                        <p class="text-xs font-semibold uppercase text-slate-500 mb-1">Coloração Urinária</p>
-                        <div class="flex items-center gap-2 mt-1">
-                            <div id="resultado-cor-box" class="w-6 h-6 rounded-full border border-slate-300 bg-slate-200"></div>
-                            <span id="resultado-cor text-sm font-bold text-slate-700">Aguardando...</span>
+                    <div class="col-md-4 mt-2 mt-md-0">
+                        <button id="btnProcess" class="btn btn-primary btn-sm w-100" onclick="openInstructionModal()" disabled>
+                            Processar Imagem
+                        </button>
+                    </div>
+                </div>
+
+                <div class="text-center">
+                    <canvas id="canvasOutput"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Seção de Confirmação & Sinais Clínicos (Aparece após processamento) -->
+    <div class="row mt-4" id="clinicalPanel" style="display: none;">
+        <div class="col-12">
+            <div class="card p-4 border-start border-primary border-4">
+                <h5 class="fw-bold text-dark mb-3">4. Aferição da Imagem & Registro de Sintomas</h5>
+                <div class="row g-3">
+                    <div class="col-md-4 border-end">
+                        <div class="mb-2">
+                            <span class="text-muted small">Volume Medido:</span>
+                            <div class="fs-2 fw-bold text-primary"><span id="outVol">0</span> <small class="fs-6">mL</small></div>
                         </div>
+                        <div class="mb-2">
+                            <span class="text-muted small">Coloração Urinária:</span>
+                            <div class="d-flex align-items-center gap-2 mt-1">
+                                <span id="outColorBadge" class="color-badge"></span>
+                                <span id="outColorText" class="fw-semibold">--</span>
+                            </div>
+                        </div>
+                        <small class="text-muted">Método: Tripla Validação (Menisco + OCR + Escala)</small>
+                    </div>
+
+                    <div class="col-md-8">
+                        <h6>Sinais Clínicos e Sintomas</h6>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6 col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="symPain">
+                                    <label class="form-check-label small" for="symPain">Dor / Ardência ao urinar</label>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="symUrgency">
+                                    <label class="form-check-label small" for="symUrgency">Urgência miccional</label>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="symLumbar">
+                                    <label class="form-check-label small" for="symLumbar">Dor lombar</label>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="symThirst">
+                                    <label class="form-check-label small" for="symThirst">Sede intensa</label>
+                                </div>
+                            </div>
+                            <div class="col-md-8">
+                                <select id="symOdor" class="form-select form-select-sm">
+                                    <option value="Característico">Odor: Característico (Sem alteração)</option>
+                                    <option value="Fétido / Intenso">Odor: Fétido / Intenso</option>
+                                    <option value="Adocicado">Odor: Adocicado / Frutado</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button class="btn btn-success btn-sm float-end" onclick="confirmAndSaveRecord()">
+                            Confirmar e Registrar Medição
+                        </button>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
 
-                <!-- Sintomas Clínicos -->
-                <div class="mb-6">
-                    <h3 class="text-sm font-bold text-slate-700 mb-3 uppercase tracking-wider text-xs">Sinais Clínicos e Sintomas no Momento</h3>
-                    <div class="grid grid-cols-2 gap-3">
-                        <label class="flex items-center gap-2 text-sm p-2.5 border rounded-lg bg-slate-50 cursor-pointer hover:bg-slate-100 transition"><input type="checkbox" id="sintoma-dor" class="w-4 h-4 text-blue-600 rounded border-slate-300"> Dor / Ardência</label>
-                        <label class="flex items-center gap-2 text-sm p-2.5 border rounded-lg bg-slate-50 cursor-pointer hover:bg-slate-100 transition"><input type="checkbox" id="sintoma-urgência" class="w-4 h-4 text-blue-600 rounded border-slate-300"> Urgência Miccional</label>
-                        <label class="flex items-center gap-2 text-sm p-2.5 border rounded-lg bg-slate-50 cursor-pointer hover:bg-slate-100 transition"><input type="checkbox" id="sintoma-lombar" class="w-4 h-4 text-blue-600 rounded border-slate-300"> Dor Lombar</label>
-                        <label class="flex items-center gap-2 text-sm p-2.5 border rounded-lg bg-slate-50 cursor-pointer hover:bg-slate-100 transition"><input type="checkbox" id="sintoma-sede" class="w-4 h-4 text-blue-600 rounded border-slate-300"> Sede Intensa</label>
-                    </div>
-                    <div class="mt-3">
-                        <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Odor Percebido</label>
-                        <select id="sintoma-odor" class="w-full border rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-blue-500">
-                            <option value="Sui generis">Sui generis (Característico)</option>
-                            <option value="Fétido">Fétido / Intenso</option>
-                            <option value="Adocicado">Adocicado / Frutado</option>
-                        </select>
+    <!-- Tabela de Histórico e Gráfico de Débito Urinário -->
+    <div class="row mt-4">
+        <div class="col-lg-7">
+            <div class="card p-3 h-100">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="card-title text-primary fw-semibold mb-0">Histórico de Medições Cronológicas</h6>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-danger" onclick="generatePDF()">PDF</button>
+                        <button class="btn btn-outline-success" onclick="generateCSV()">CSV</button>
                     </div>
                 </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle small" id="historyTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Data/Hora</th>
+                                <th>Volume</th>
+                                <th>Coloração</th>
+                                <th>Débito (mL/kg/h)</th>
+                                <th>Sinais Clínicos</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5 mt-3 mt-lg-0">
+            <div class="card p-3 h-100">
+                <h6 class="card-title text-primary fw-semibold mb-3">Curva de Débito Urinário</h6>
+                <canvas id="debitoChart"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
 
-                <button onclick="confirmarMedicao()" class="w-full bg-emerald-600 text-white rounded-lg py-2.5 font-bold hover:bg-emerald-700 transition shadow-sm text-sm">
-                    💾 Confirmar e Registrar Medição no Histórico
+<!-- Modal Informativo de Orientações de Captura -->
+<div class="modal fade" id="guideModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white py-2">
+                <h6 class="modal-title">Instruções de Posicionamento</h6>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body small">
+                <p class="fw-semibold mb-2">Para garantir o processamento correto:</p>
+                <ol class="mb-0 ps-3">
+                    <li class="mb-1">Verifique se o celular está firme no suporte do dispositivo.</li>
+                    <li class="mb-1">Certifique-se de que não há inclinação ortogonal ou iluminação direta refletindo na bolsa.</li>
+                    <li class="mb-1">O coletor deve estar totalmente estabilizado para evitar movimento no nível hidroaéreo.</li>
+                </ol>
+            </div>
+            <div class="modal-footer py-2">
+                <button type="button" class="btn btn-primary btn-sm" onclick="executeImageProcessing()">Compreendido, Processar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let isOpenCvLoaded = false;
+let recordsHistory = [];
+let chartInstance = null;
+let activeProcessingResult = null;
+
+function onOpenCvReady() {
+    isOpenCvLoaded = true;
+    document.getElementById('statusDot').classList.add('status-ready');
+    document.getElementById('statusText').innerText = "Sistema pronto";
+    document.getElementById('btnProcess').disabled = false;
+    initChart();
+}
+
+function openInstructionModal() {
+    const fileInput = document.getElementById('imgUploader');
+    if (!fileInput.files || fileInput.files.length === 0) {
+        alert("Por favor, selecione uma imagem do coletor.");
+        return;
+    }
+    const modal = new bootstrap.Modal(document.getElementById('guideModal'));
+    modal.show();
+}
+
+async function executeImageProcessing() {
+    bootstrap.Modal.getInstance(document.getElementById('guideModal')).hide();
+    
+    const file = document.getElementById('imgUploader').files[0];
+    const timestamp = extractTimestampFromFile(file);
+
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+    
+    img.onload = async function() {
+        // Carrega Matriz OpenCV
+        let src = cv.imread(img);
+        let dst = src.clone();
+
+        // 1. Processamento e Isolamento do Menisco/Nível Hidroaéreo
+        let gray = new cv.Mat();
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+        cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+
+        let edges = new cv.Mat();
+        cv.Canny(gray, edges, 50, 150);
+
+        // Varredura da Região de Interesse (ROI) - Meio do Coletor
+        let rows = edges.rows;
+        let cols = edges.cols;
+        
+        // Localiza a linha horizontal de maior contraste no centro
+        let bestRow = Math.floor(rows * 0.5);
+        let maxTransitions = 0;
+
+        for (let r = Math.floor(rows * 0.2); r < Math.floor(rows * 0.85); r++) {
+            let transitions = 0;
+            for (let c = Math.floor(cols * 0.3); c < Math.floor(cols * 0.7); c++) {
+                if (edges.ucharPtr(r, c)[0] > 200) transitions++;
+            }
+            if (transitions > maxTransitions) {
+                maxTransitions = transitions;
+                bestRow = r;
+            }
+        }
+
+        // 2. Análise da Colorimetria no Fluido
+        let colorData = analyzeFluidColor(src, bestRow);
+
+        // 3. Estimativa por Interpolação Linear e Escala Bottom-Up
+        let minV = parseFloat(document.getElementById('minVol').value);
+        let maxV = parseFloat(document.getElementById('maxVol').value);
+        let stepV = parseFloat(document.getElementById('stepVol').value);
+
+        let heightRatio = 1.0 - (bestRow / rows);
+        let rawVol = minV + (heightRatio * (maxV - minV));
+        let estimatedVol = Math.round(rawVol / stepV) * stepV;
+        estimatedVol = Math.max(minV, Math.min(maxV, estimatedVol));
+
+        // Desenha marcação no Canvas Output
+        let p1 = new cv.Point(0, bestRow);
+        let p2 = new cv.Point(cols, bestRow);
+        cv.line(dst, p1, p2, new cv.Scalar(255, 0, 0, 255), 3);
+
+        cv.imshow('canvasOutput', dst);
+
+        // Libera memória C++
+        src.delete(); dst.delete(); gray.delete(); edges.delete();
+
+        // Armazena resultado temporário
+        activeProcessingResult = {
+            timestamp: timestamp,
+            volume: estimatedVol,
+            colorName: colorData.name,
+            colorHex: colorData.hex
+        };
+
+        // Exibe na UI para validação do usuário
+        document.getElementById('outVol').innerText = estimatedVol;
+        document.getElementById('outColorText').innerText = colorData.name;
+        document.getElementById('outColorBadge').style.backgroundColor = colorData.hex;
+        document.getElementById('clinicalPanel').style.display = 'block';
+    };
+}
+
+function analyzeFluidColor(srcMat, liquidRow) {
+    // Amostragem na região central do líquido
+    let sampleRow = Math.min(srcMat.rows - 10, liquidRow + 20);
+    let sampleCol = Math.floor(srcMat.cols / 2);
+    let pixel = srcMat.ucharPtr(sampleRow, sampleCol); // RGBA
+
+    let r = pixel[0], g = pixel[1], b = pixel[2];
+
+    // Mapeamento simples de coloração
+    if (r > 200 && g > 180 && b < 100) return { name: "Amarelo Claro / Citrino", hex: "#FCE883" };
+    if (r > 180 && g > 120 && b < 50)  return { name: "Âmbar / Amarelo Escuro", hex: "#FFBF00" };
+    if (r > 150 && g < 80 && b < 80)    return { name: "Avermelhado / Hematúria", hex: "#C34A2C" };
+    return { name: "Castanho / Colúria", hex: "#8B4513" };
+}
+
+function extractTimestampFromFile(file) {
+    // Parse no nome do arquivo (Formato AAAMMDDHHMM)
+    const name = file.name;
+    const match = name.match(/(\d{4})(\d{2})(\d{2})_?(\d{2})(\d{2})/);
+    if (match) {
+        return new Date(match[1], match[2] - 1, match[3], match[4], match[5]);
+    }
+    return new Date(file.lastModified || Date.now());
+}
+
+function confirmAndSaveRecord() {
+    const weight = parseFloat(document.getElementById('pWeight').value) || 70;
+    
+    // Cálculo do Débito Urinário (mL/kg/h)
+    let debito = "0.00";
+    if (recordsHistory.length > 0) {
+        let lastRecord = recordsHistory[recordsHistory.length - 1];
+        let hoursDiff = (activeProcessingResult.timestamp - lastRecord.timestamp) / (1000 * 60 * 60);
+        if (hoursDiff <= 0) hoursDiff = 1; // Prevenção de divisão por zero
+        debito = (activeProcessingResult.volume / weight / hoursDiff).toFixed(2);
+    }
+
+    // Coleta Sintomas
+    let symptoms = [];
+    if (document.getElementById('symPain').checked) symptoms.push("Disúria");
+    if (document.getElementById('symUrgency').checked) symptoms.push("Urgência");
+    if (document.getElementById('symLumbar').checked) symptoms.push("Dor Lombar");
+    if (document.getElementById('symThirst').checked) symptoms.push("Sede Intensa");
+    symptoms.push(document.getElementById('symOdor').value);
+
+    const record = {
+        ...activeProcessingResult,
+        debito: debito,
+        symptoms: symptoms.join(", ")
+    };
+
+    recordsHistory.push(record);
+    renderHistoryTable();
+    updateChartData();
+    document.getElementById('clinicalPanel').style.display = 'none';
+}
+
+function renderHistoryTable() {
+    const tbody = document.querySelector('#historyTable tbody');
+    tbody.innerHTML = '';
+    recordsHistory.forEach(r => {
+        tbody.innerHTML += `
+            <tr>
+                <td>${r.timestamp.toLocaleString('pt-BR')}</td>
+                <td><strong>${r.volume} mL</strong></td>
+                <td><span class="color-badge" style="background:${r.colorHex}"></span> ${r.colorName}</td>
+                <td>${r.debito}</td>
+                <td><small>${r.symptoms}</small></td>
+            </tr>
+        `;
+    });
+}
+
+function initChart() {
+    const ctx = document.getElementById('debitoChart').getContext('2d');
+    chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [{
+                label: 'Débito (mL/kg/h)',
+                data: [],
+                borderColor: '#0d6efd',
+                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                tension: 0.3,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            scales: { y: { beginAtZero: true } }
+        }
+    });
+}
+
+function updateChartData() {
+    chartInstance.data.labels = recordsHistory.map(r => r.timestamp.toLocaleTimeString('pt-BR', {hour: '2-digit', minute:'2-digit'}));
+    chartInstance.data.datasets[0].data = recordsHistory.map(r => r.debito);
+    chartInstance.update();
+}
+
+function generateCSV() {
+    let csv = "Data_Hora,Volume_mL,Coloracao,Debito_mL_kg_h,Sinais_Clinicos\n";
+    recordsHistory.forEach(r => {
+        csv += `"${r.timestamp.toISOString()}","${r.volume}","${r.colorName}","${r.debito}","${r.symptoms}"\n`;
+    });
+    let blob = new Blob([csv], { type: 'text/csv' });
+    let a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `urologger_dados_${Date.now()}.csv`;
+    a.click();
+}
+
+function generatePDF() {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    doc.setFontSize(16);
+    doc.text("Relatório de Monitoramento Urinário - Urologger", 14, 20);
+    
+    doc.setFontSize(10);
+    doc.text(`Paciente: ${document.getElementById('pName').value || 'Não informado'}`, 14, 30);
+    doc.text(`Peso: ${document.getElementById('pWeight').value} kg | Altura: ${document.getElementById('pHeight').value} cm`, 14, 36);
+    
+    let y = 50;
+    doc.text("Histórico de Registros:", 14, y);
+    y += 8;
+
+    recordsHistory.forEach((r, idx) => {
+        doc.text(`${idx + 1}. ${r.timestamp.toLocaleString('pt-BR')} - Vol: ${r.volume}mL | Cor: ${r.colorName} | Débito: ${r.debito} mL/kg/h`, 14, y);
+        y += 6;
+        doc.text(`   Sintomas: ${r.symptoms}`, 14, y);
+        y += 8;
+    });
+
+    doc.save(`urologger_relatorio_${Date.now()}.pdf`);
+}
+</script>
+</body>
+</html>
