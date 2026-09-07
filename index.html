@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Urologger - Processamento Automático do Coletor Urinário via OCR</title>
+    <title>Urologger - Detecção Geométrica da Escala por Traços Verdes</title>
 
     <!-- Bootstrap 5 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-    <!-- Chart.js, html2pdf.js, exifr e Tesseract.js (Engine OCR) -->
+    <!-- Chart.js, html2pdf.js e exifr -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
     <style>
         body { background-color: #f4f6f9; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
@@ -22,9 +21,6 @@
         #imageCanvas { width: 100%; height: auto; border: 2px solid #2b2b2b; border-radius: 8px; background: #111; }
         .color-badge { width: 22px; height: 22px; border-radius: 50%; display: inline-block; border: 1px solid #ccc; vertical-align: middle; }
         .guide-box { background-color: #eef2f7; border-left: 4px solid #0d6efd; padding: 12px; border-radius: 6px; }
-
-        /* Spinner de Carregamento do OCR */
-        #ocrLoadingSpinner { display: none; margin-top: 10px; }
 
         /* Template do Relatório PDF Estruturado */
         #pdfReportTemplate { display: none; background: #fff; padding: 30px; font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; }
@@ -41,9 +37,9 @@
     <header class="d-flex justify-content-between align-items-center pb-3 mb-4 border-bottom">
         <div>
             <h3 class="fw-bold text-primary mb-0">Urologger</h3>
-            <small class="text-muted">Processamento com Leitura OCR da Escala Urinária</small>
+            <small class="text-muted">Processamento Geométrico via Traços Verdes da Escala</small>
         </div>
-        <span class="badge bg-primary px-3 py-2">v3.5 - OCR & Leitura Numérica</span>
+        <span class="badge bg-primary px-3 py-2">v4.5 - Escala por Traço Físico</span>
     </header>
 
     <div class="row g-4">
@@ -116,10 +112,6 @@
 
                 <div id="canvasContainer" class="text-center">
                     <canvas id="imageCanvas"></canvas>
-                    <div id="ocrLoadingSpinner" class="text-center py-2">
-                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                        <span class="small text-muted ms-2" id="ocrStatusText">Executando reconhecimento OCR da escala...</span>
-                    </div>
                 </div>
             </div>
         </div>
@@ -129,7 +121,7 @@
     <div class="row mt-4" id="clinicalSection" style="display: none;">
         <div class="col-12">
             <div class="card p-4 border-start border-primary border-4">
-                <h5 class="fw-bold mb-3 text-dark">4. Resultado Automático por OCR & Avaliação Clínica</h5>
+                <h5 class="fw-bold mb-3 text-dark">4. Resultado Automático da Imagem & Avaliação Clínica</h5>
                 <div class="row g-3">
                     <div class="col-md-4 border-end">
                         <div class="mb-2">
@@ -137,11 +129,11 @@
                             <div class="fw-bold text-dark small" id="resTimestamp">--/--/---- --:--</div>
                         </div>
                         <div class="mb-2">
-                            <span class="text-muted small">Leitura Confirmada via OCR:</span>
-                            <div class="fs-6 fw-bold text-primary" id="resOcrDetails">Aguardando...</div>
+                            <span class="text-muted small">Traço Interceptado no Nível:</span>
+                            <div class="fs-6 fw-bold text-primary" id="resTickDetails">Aguardando...</div>
                         </div>
                         <div class="mb-3">
-                            <span class="text-muted small">Volume Processado:</span>
+                            <span class="text-muted small">Volume Automatizado Processado:</span>
                             <div class="fs-2 fw-bold text-success"><span id="resVol">0</span> <small class="fs-6 text-dark">mL</small></div>
                         </div>
                         <div class="mb-2">
@@ -241,12 +233,12 @@
             </div>
             <div class="modal-body small">
                 <div class="guide-box mb-3">
-                    <strong>⚠️ Para garantir a precisão da leitura OCR dos numerais:</strong>
+                    <strong>⚠️ Para garantir a detecção precisa de cada traço verde da escala:</strong>
                 </div>
                 <ol class="mb-0 ps-3">
-                    <li class="mb-2"><strong>Foco nos Números:</strong> Mantenha a coluna graduada com boa nitidez no visor.</li>
-                    <li class="mb-2"><strong>Sem Reflexos:</strong> Evite pontos de luz brilhante sobre os números impressos.</li>
-                    <li class="mb-1"><strong>Estabilização:</strong> Aguarde o menisco de urina estabilizar antes da foto.</li>
+                    <li class="mb-2"><strong>Foco nos Traços:</strong> Garanta nitidez nos traços verdes da metade esquerda.</li>
+                    <li class="mb-2"><strong>Perpendicularidade:</strong> Mantenha o celular paralelo à bolsa.</li>
+                    <li class="mb-1"><strong>Estabilização:</strong> Aguarde o líquido parar de chacoalhar.</li>
                 </ol>
             </div>
             <div class="modal-footer py-2">
@@ -261,7 +253,7 @@
 <div id="pdfReportTemplate">
     <div style="text-align: center; margin-bottom: 20px;">
         <h2 style="margin: 0; font-size: 20pt;">RELATÓRIO CLÍNICO DE MONITORAMENTO URINÁRIO</h2>
-        <p style="margin: 5px 0 0 0; color: #666; font-size: 10pt;">Leitura de Escala via OCR - Urologger</p>
+        <p style="margin: 5px 0 0 0; color: #666; font-size: 10pt;">Análise Geométricas dos Traços Verdes - Urologger</p>
     </div>
 
     <div style="background: #f7fafc; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 10pt;">
@@ -275,7 +267,7 @@
         </div>
     </div>
 
-    <h4 style="color: #2b6cb0; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; font-size: 12pt;">1. HISTÓRICO DAS AFERIÇÕES VIA OCR</h4>
+    <h4 style="color: #2b6cb0; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; font-size: 12pt;">1. HISTÓRICO DAS AFERIÇÕES AUTOMÁTICAS</h4>
     <table class="pdf-table">
         <thead>
             <tr>
@@ -363,15 +355,12 @@ async function extractAcquisitionTimestamp(file) {
     return new Date(file.lastModified || Date.now());
 }
 
-// Algoritmo Combinado de Visão Computacional + OCR dos Numerais da Escala
-async function processAutomaticBagSegmentation(timestamp) {
-    document.getElementById('ocrLoadingSpinner').style.display = 'block';
-    document.getElementById('ocrStatusText').innerText = "Analisando transição visual e escaneando OCR...";
-
+// ALGORITMO DE PROCESSAMENTO GEOMÉTRICO DOS TRAÇOS VERDES (ESCALA DE 100 EM 100 mL)
+function processAutomaticBagSegmentation(timestamp) {
     const canvas = document.getElementById('imageCanvas');
     const ctx = canvas.getContext('2d');
 
-    const maxDim = 720; // Resolução otimizada para OCR
+    const maxDim = 720;
     let width = loadedImage.width;
     let height = loadedImage.height;
 
@@ -388,17 +377,43 @@ async function processAutomaticBagSegmentation(timestamp) {
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
 
-    // 1. ISOLAR A COLUNA ESQUERDA DOS NUMERAIS (Entre 15% e 55% da largura)
-    let scaleLeft = Math.floor(width * 0.15);
-    let scaleRight = Math.floor(width * 0.55);
+    // 1. ISOLAR O CORPO DA BOLSA (Descartando o cabide superior)
+    let bagMinX = width, bagMaxX = 0, bagMinY = height, bagMaxY = 0;
 
-    // 2. BUSCA DO NÍVEL HIDROAÉREO (Transição Ar/Plástico ➔ Urina Amarela)
-    let hydroLevelY = Math.floor(height * 0.5);
+    for (let y = Math.floor(height * 0.20); y < Math.floor(height * 0.90); y++) {
+        for (let x = Math.floor(width * 0.10); x < Math.floor(width * 0.90); x++) {
+            let i = (y * width + x) * 4;
+            let r = data[i], g = data[i+1], b = data[i+2];
+
+            let isBagContent = (r > 120 && g > 90) && (r > b || (r > 170 && g > 170 && b > 170));
+            if (isBagContent) {
+                if (x < bagMinX) bagMinX = x;
+                if (x > bagMaxX) bagMaxX = x;
+                if (y < bagMinY) bagMinY = y;
+                if (y > bagMaxY) bagMaxY = y;
+            }
+        }
+    }
+
+    bagMinX = Math.max(0, bagMinX + 5);
+    bagMaxX = Math.min(width, bagMaxX - 5);
+    bagMinY = Math.max(0, bagMinY + 10);
+    bagMaxY = Math.min(height, bagMaxY - 10);
+
+    let bagWidth = bagMaxX - bagMinX;
+    let bagHeight = bagMaxY - bagMinY;
+
+    // 2. METADE ESQUERDA DA BOLSA (Coluna Estrita dos Traços Verdes: 10% a 38% da bolsa)
+    let ticksColStart = bagMinX + Math.floor(bagWidth * 0.10);
+    let ticksColEnd   = bagMinX + Math.floor(bagWidth * 0.38);
+
+    // 3. DETECÇÃO DO NÍVEL HIDROAÉREO REAL (Menisco da Urina)
+    let hydroLevelY = Math.floor(bagMinY + bagHeight * 0.5);
     let maxYellowDiff = 0;
 
-    for (let y = Math.floor(height * 0.15); y < Math.floor(height * 0.88); y++) {
+    for (let y = bagMinY + 15; y < bagMaxY - 15; y++) {
         let yellowScore = 0;
-        for (let x = scaleLeft; x < Math.floor(width * 0.80); x++) {
+        for (let x = ticksColStart; x < ticksColEnd; x++) {
             let iTop = (y * width + x) * 4;
             let iBot = ((y + 4) * width + x) * 4;
 
@@ -415,116 +430,115 @@ async function processAutomaticBagSegmentation(timestamp) {
         }
     }
 
-    // 3. EXECUÇÃO DO MOTOR OCR (Tesseract.js) NA COLUNA DOS NÚMEROS
-    let ocrDetectedVolume = null;
-    let ocrDetailsText = "";
+    // 4. LOCALIZAR TODOS OS TRAÇOS VERDES DA ESCALA NA COLUNA ESQUERDA
+    let detectedTicksY = [];
+    let insideGreenTick = false;
+    let tickStartY = 0;
 
-    try {
-        // Criar canvas auxiliar recortado para binarização do OCR
-        let ocrCanvas = document.createElement('canvas');
-        let ocrWidth = scaleRight - scaleLeft;
-        let ocrHeight = height;
-        ocrCanvas.width = ocrWidth;
-        ocrCanvas.height = ocrHeight;
-        let ocrCtx = ocrCanvas.getContext('2d');
-        ocrCtx.drawImage(canvas, scaleLeft, 0, ocrWidth, ocrHeight, 0, 0, ocrWidth, ocrHeight);
+    for (let y = bagMinY + 10; y < bagMaxY - 10; y++) {
+        let greenPixels = 0;
+        for (let x = ticksColStart; x < ticksColEnd; x++) {
+            let i = (y * width + x) * 4;
+            let r = data[i], g = data[i+1], b = data[i+2];
 
-        // Prepara Worker do Tesseract restrito a numerais
-        const worker = await Tesseract.createWorker('eng');
-        await worker.setParameters({
-            tessedit_char_whitelist: '0123456789',
-        });
-
-        const ocrResult = await worker.recognize(ocrCanvas);
-        await worker.terminate();
-
-        // Mapear números reconhecidos e suas posições verticais (bbox Y)
-        let recognizedNumbers = [];
-        if (ocrResult.data && ocrResult.data.words) {
-            ocrResult.data.words.forEach(w => {
-                let num = parseInt(w.text.trim(), 10);
-                if (!isNaN(num) && num >= 100 && num <= 2000) {
-                    recognizedNumbers.push({
-                        val: num,
-                        yMin: w.bbox.y0,
-                        yMax: w.bbox.y1,
-                        yCenter: Math.floor((w.bbox.y0 + w.bbox.y1) / 2)
-                    });
-                }
-            });
+            // Filtro para detectar a tinta verde/escura dos traços graduados
+            let isGreenTick = (g > r + 12 && g > b + 12 && g < 150) || (r < 100 && g < 120 && b < 100);
+            if (isGreenTick) greenPixels++;
         }
 
-        // Ordenar numerais da posição mais alta (menor Y) até a mais baixa (maior Y)
-        recognizedNumbers.sort((a, b) => a.yCenter - b.yCenter);
+        let isRowTick = greenPixels > (ticksColEnd - ticksColStart) * 0.22;
 
-        if (recognizedNumbers.length > 0) {
-            // Encontrar o numeral cuja posição Y seja mais próxima da linha do nível hidroaéreo
-            let closestNum = recognizedNumbers[0];
-            let minDistance = Math.abs(closestNum.yCenter - hydroLevelY);
+        if (isRowTick && !insideGreenTick) {
+            insideGreenTick = true;
+            tickStartY = y;
+        } else if (!isRowTick && insideGreenTick) {
+            insideGreenTick = false;
+            let tickCenterY = Math.floor((tickStartY + y) / 2);
+            detectedTicksY.push(tickCenterY);
+        }
+    }
 
-            for (let i = 1; i < recognizedNumbers.length; i++) {
-                let dist = Math.abs(recognizedNumbers[i].yCenter - hydroLevelY);
-                if (dist < minDistance) {
-                    minDistance = dist;
-                    closestNum = recognizedNumbers[i];
-                }
+    // 5. MAPEAMENTO DOS VALORES DOS TRAÇOS DA B. BRAUN (De 2000 até 100 em passos de 100 mL)
+    let maxVol = parseFloat(document.getElementById('maxVol').value) || 2000;
+    let stepVol = parseFloat(document.getElementById('stepVol').value) || 100;
+
+    let processedVolume = maxVol;
+    let tickDetailsText = "";
+
+    if (detectedTicksY.length >= 2) {
+        // Encontrar qual traço verde está mais próximo da linha do nível hidroaéreo
+        let closestTickIdx = 0;
+        let minDistance = Math.abs(detectedTicksY[0] - hydroLevelY);
+
+        for (let i = 1; i < detectedTicksY.length; i++) {
+            let dist = Math.abs(detectedTicksY[i] - hydroLevelY);
+            if (dist < minDistance) {
+                minDistance = dist;
+                closestTickIdx = i;
             }
-
-            ocrDetectedVolume = closestNum.val;
-            ocrDetailsText = `OCR detectou o valor ${closestNum.val} mL na linha de nível`;
         }
 
-    } catch (err) {
-        console.warn("Falha de execução do Tesseract.js, aplicando fallback visual:", err);
+        // O primeiro traço no topo é 2000, o segundo é 1900, o próximo é 1800...
+        // Cada traço reduz exatamente 100 mL
+        processedVolume = maxVol - (closestTickIdx * stepVol);
+        processedVolume = Math.max(100, Math.min(maxVol, processedVolume));
+
+        tickDetailsText = `Nível alinhado ao traço #${closestTickIdx + 1} da escala (${processedVolume} mL)`;
+    } else {
+        // Fallback por proporção direta
+        let ratio = 1.0 - ((hydroLevelY - bagMinY) / bagHeight);
+        processedVolume = Math.round((100 + ratio * (maxVol - 100)) / 100) * 100;
+        tickDetailsText = "Interpolação de nível direto na escala";
     }
 
-    document.getElementById('ocrLoadingSpinner').style.display = 'none';
-
-    // 4. CÁLCULO FINAL DE VOLUME (Prioriza OCR, usa Fallback se OCR for Inconclusivo)
-    let finalVolume = ocrDetectedVolume;
-
-    if (finalVolume === null) {
-        // Fallback por interpolação de escala física
-        let maxVol = parseFloat(document.getElementById('maxVol').value) || 2000;
-        let minVol = 100;
-        let ratio = 1.0 - (hydroLevelY / height);
-        finalVolume = Math.round((minVol + ratio * (maxVol - minVol)) / 100) * 100;
-        ocrDetailsText = "Leitura por estimativa de graduação visual";
-    }
-
-    // 5. COLORIMETRIA DA URINA (Amostragem abaixo do nível hidroaéreo)
+    // 6. COLORIMETRIA DA URINA (Amostragem abaixo do nível hidroaéreo)
     let sampleY = Math.min(height - 5, hydroLevelY + 15);
-    let sampleX = Math.floor(width / 2);
+    let sampleX = Math.floor((ticksColStart + bagMaxX) / 2);
     let samplePixel = (sampleY * width + sampleX) * 4;
 
     let r = data[samplePixel], g = data[samplePixel + 1], b = data[samplePixel + 2];
     let colorData = classifyUrineColor(r, g, b);
 
-    // 6. DESENHAR GUIAS NO VISOR
-    // Caixa Amarela Fina = Área de Leitura OCR
-    ctx.strokeStyle = '#ffc107';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(scaleLeft, 10, scaleRight - scaleLeft, height - 20);
+    // 7. DESENHAR GUIAS VISUAIS NO CANVAS
+    // Caixa Verde = Limite do Corpo da Bolsa
+    ctx.strokeStyle = '#198754';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bagMinX, bagMinY, bagWidth, bagHeight);
 
-    // Linha Vermelha = Nível Hidroaéreo Cruzando a Escala
+    // Caixa Amarela Fina = Coluna Esquerda de Traços Analisada
+    ctx.strokeStyle = '#ffc107';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(ticksColStart, bagMinY, ticksColEnd - ticksColStart, bagHeight);
+
+    // Marcar com traços azuis todos os traços verdes detectados na escala
+    ctx.strokeStyle = '#0d6efd';
+    ctx.lineWidth = 2;
+    detectedTicksY.forEach(tY => {
+        ctx.beginPath();
+        ctx.moveTo(ticksColStart, tY);
+        ctx.lineTo(ticksColEnd, tY);
+        ctx.stroke();
+    });
+
+    // Linha Vermelha Espessa = Nível Hidroaéreo Exato
     ctx.strokeStyle = '#dc3545';
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(10, hydroLevelY);
-    ctx.lineTo(width - 10, hydroLevelY);
+    ctx.moveTo(bagMinX, hydroLevelY);
+    ctx.lineTo(bagMaxX, hydroLevelY);
     ctx.stroke();
 
-    // Atualização dos Resultados na Interface
+    // Atualização da Interface
     currentResult = {
         timestamp: timestamp,
-        volume: finalVolume,
+        volume: processedVolume,
         colorName: colorData.name,
         colorHex: colorData.hex
     };
 
     document.getElementById('resTimestamp').innerText = timestamp.toLocaleString('pt-BR');
-    document.getElementById('resOcrDetails').innerText = ocrDetailsText;
-    document.getElementById('resVol').innerText = finalVolume;
+    document.getElementById('resTickDetails').innerText = tickDetailsText;
+    document.getElementById('resVol').innerText = processedVolume;
     document.getElementById('resColorText').innerText = colorData.name;
     document.getElementById('resColorBadge').style.backgroundColor = colorData.hex;
     document.getElementById('clinicalSection').style.display = 'block';
