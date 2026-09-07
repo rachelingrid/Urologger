@@ -73,7 +73,7 @@
                 <h6 class="fw-bold text-primary mb-3">2. Calibração do Coletor Urinário</h6>
                 <div class="mb-2">
                     <label class="form-label small mb-1">Modelo do Coletor</label>
-                    <input type="text" id="collectorModel" class="form-control form-control-sm" value="Coletor Branco 2000 mL">
+                    <input type="text" id="collectorModel" class="form-control form-control-sm" value="Coletor B. Braun 2000 mL">
                 </div>
                 <div class="row g-2">
                     <div class="col-6">
@@ -322,7 +322,6 @@ async function handleFileSelect(event) {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Extracão de Data e Hora via Metadados EXIF ou Nome do Arquivo AAAMMDDHHMM
     let acquisitionTimestamp = await extractAcquisitionTimestamp(file);
 
     const reader = new FileReader();
@@ -336,10 +335,8 @@ async function handleFileSelect(event) {
     reader.readAsDataURL(file);
 }
 
-// Módulo de Extração de Metadados de Data/Hora
 async function extractAcquisitionTimestamp(file) {
     try {
-        // Tenta exifr para ler Metadados EXIF da câmera
         if (window.exifr) {
             let exif = await exifr.parse(file, ['DateTimeOriginal', 'CreateDate']);
             if (exif && (exif.DateTimeOriginal || exif.CreateDate)) {
@@ -350,18 +347,16 @@ async function extractAcquisitionTimestamp(file) {
         console.warn("EXIF não encontrado ou indisponível:", err);
     }
 
-    // Fallback: Nome do arquivo no padrão AAAMMDDHHMM ou AAAAMMDD_HHMMSS
     const name = file.name;
     const match = name.match(/(\d{4})(\d{2})(\d{2})_?(\d{2})(\d{2})/);
     if (match) {
         return new Date(match[1], match[2] - 1, match[3], match[4], match[5]);
     }
 
-    // Se tudo falhar, utiliza a data da última modificação do arquivo ou momento atual
     return new Date(file.lastModified || Date.now());
 }
 
-// Algoritmo de Visão Computacional 100% Automático
+// Algoritmo de Visão Computacional Focado na Coluna de Escala e Nível Hidroaéreo
 function processAutomaticBagSegmentation(timestamp) {
     const canvas = document.getElementById('imageCanvas');
     const ctx = canvas.getContext('2d');
@@ -383,19 +378,17 @@ function processAutomaticBagSegmentation(timestamp) {
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
 
-    // 1. DELINEAMENTO DA BOLSA (Detecção de Contraste e ROI do Coletor Branco)
+    // 1. LOCALIZAR DIMENSÕES DA BOLSA (Ignorar cabide e suporte de plástico)
     let minX = width, maxX = 0, minY = height, maxY = 0;
 
-    for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
+    for (let y = Math.floor(height * 0.15); y < Math.floor(height * 0.90); y++) {
+        for (let x = Math.floor(width * 0.10); x < Math.floor(width * 0.90); x++) {
             let i = (y * width + x) * 4;
             let r = data[i], g = data[i+1], b = data[i+2];
 
-            // Condição para identificar pixels da bolsa branca ou do líquido amarelado
-            let isWhiteBag = (r > 150 && g > 150 && b > 140);
-            let isUrineYellow = (r > 130 && g > 100 && b < 120);
+            let isBagContent = (r > 120 && g > 90) && (r > b || (r > 180 && g > 180 && b > 180));
 
-            if (isWhiteBag || isUrineYellow) {
+            if (isBagContent) {
                 if (x < minX) minX = x;
                 if (x > maxX) maxX = x;
                 if (y < minY) minY = y;
@@ -404,71 +397,73 @@ function processAutomaticBagSegmentation(timestamp) {
         }
     }
 
-    // Ajuste de margem de segurança da ROI da bolsa
-    minX = Math.max(0, minX + 10);
-    maxX = Math.min(width, maxX - 10);
+    minX = Math.max(0, minX + 5);
+    maxX = Math.min(width, maxX - 5);
     minY = Math.max(0, minY + 10);
     maxY = Math.min(height, maxY - 10);
 
-    // 2. BUSCA AUTOMÁTICA DO NÍVEL HIDROAÉREO (Transição Bolsa Branca ➔ Urina Amarela)
-    let hydroLevelY = Math.floor((minY + maxY) / 2);
-    let maxTransContrast = 0;
+    let bagWidth = maxX - minX;
 
-    for (let y = minY + 15; y < maxY - 15; y++) {
-        let contrastSum = 0;
-        for (let x = minX + 10; x < maxX - 10; x++) {
+    // 2. ISOLAR A COLUNA DA ESCALA (Faixa Esquerda da Bolsa: 10% a 35% da ROI)
+    let scaleColStart = minX + Math.floor(bagWidth * 0.08);
+    let scaleColEnd   = minX + Math.floor(bagWidth * 0.35);
+
+    // 3. ENCONTRAR O NÍVEL HIDROAÉREO (Transição Ar/Plástico Claro ➔ Líquido Amarelo)
+    let hydroLevelY = Math.floor(minY + (maxY - minY) * 0.4);
+    let maxYellowTransition = 0;
+
+    for (let y = minY + 20; y < maxY - 20; y++) {
+        let transitionScore = 0;
+        for (let x = minX + Math.floor(bagWidth * 0.2); x < maxX - Math.floor(bagWidth * 0.2); x++) {
             let iTop = (y * width + x) * 4;
-            let iBot = ((y + 3) * width + x) * 4;
+            let iBot = ((y + 4) * width + x) * 4;
 
-            // Diferença no canal Azul (B) é máxima na transição do branco (B alto) para urina (B baixo)
-            let diffBlue = Math.abs(data[iTop + 2] - data[iBot + 2]);
-            contrastSum += diffBlue;
+            let topYellow = (data[iTop] + data[iTop+1]) - (data[iTop+2] * 1.5);
+            let botYellow = (data[iBot] + data[iBot+1]) - (data[iBot+2] * 1.5);
+
+            let diff = botYellow - topYellow;
+            if (diff > 0) transitionScore += diff;
         }
 
-        if (contrastSum > maxTransContrast) {
-            maxTransContrast = contrastSum;
+        if (transitionScore > maxYellowTransition) {
+            maxYellowTransition = transitionScore;
             hydroLevelY = y;
         }
     }
 
-    // 3. ANCORAGEM DO TOPO DA ESCALA (Primeiro Traço Escuro/Verde/Azul na Bolsa)
-    let scaleTopY = minY + 10;
-    for (let y = minY; y < hydroLevelY; y++) {
-        let darkScalePixels = 0;
-        for (let x = minX; x < maxX; x++) {
+    // 4. ACHAR O TRAÇO SUPERIOR (PONTO MÁXIMO - Mínimo Y da Escala)
+    let scaleTopY = minY + 15;
+    for (let y = minY + 5; y < hydroLevelY; y++) {
+        let tickPixels = 0;
+        for (let x = scaleColStart; x < scaleColEnd; x++) {
             let i = (y * width + x) * 4;
             let r = data[i], g = data[i+1], b = data[i+2];
 
-            // Traços escuros, tons de verde escuro ou azul (G e B maiores ou tom escuro)
-            let isDarkLine = (r < 100 && g < 100 && b < 100);
-            let isGreenBlueLine = (g > r + 15 || b > r + 15) && (r < 120);
-
-            if (isDarkLine || isGreenBlueLine) darkScalePixels++;
+            let isTickPixel = (r < 110 && g < 120 && b < 110) || (g > r + 10 && g > b + 10 && g < 140);
+            if (isTickPixel) tickPixels++;
         }
 
-        if (darkScalePixels > (maxX - minX) * 0.15) {
+        if (tickPixels > (scaleColEnd - scaleColStart) * 0.20) {
             scaleTopY = y;
             break;
         }
     }
 
-    // 4. CONTAGEM REGRESSIVA DE TRAÇOS (Do Topo da Escala até o Nível Hidroaéreo)
+    // 5. CONTAGEM DOS TRAÇOS (Entre o Traço Superior e o Nível Hidroaéreo)
     let tickCount = 0;
     let insideTick = false;
 
     for (let y = scaleTopY; y <= hydroLevelY; y++) {
         let tickPixels = 0;
-        for (let x = minX; x < maxX; x++) {
+        for (let x = scaleColStart; x < scaleColEnd; x++) {
             let i = (y * width + x) * 4;
             let r = data[i], g = data[i+1], b = data[i+2];
 
-            let isDarkLine = (r < 100 && g < 100 && b < 100);
-            let isGreenBlueLine = (g > r + 15 || b > r + 15) && (r < 120);
-
-            if (isDarkLine || isGreenBlueLine) tickPixels++;
+            let isTickPixel = (r < 110 && g < 120 && b < 110) || (g > r + 10 && g > b + 10 && g < 140);
+            if (isTickPixel) tickPixels++;
         }
 
-        let isRowTick = tickPixels > (maxX - minX) * 0.12;
+        let isRowTick = tickPixels > (scaleColEnd - scaleColStart) * 0.18;
         if (isRowTick && !insideTick) {
             tickCount++;
             insideTick = true;
@@ -477,35 +472,39 @@ function processAutomaticBagSegmentation(timestamp) {
         }
     }
 
-    let ticksBelowMax = Math.max(0, tickCount - 1);
+    let ticksDiscounted = Math.max(0, tickCount - 1);
 
-    // 5. CÁLCULO DO VOLUME
+    // 6. CÁLCULO DECRESCENTE DO VOLUME
     let maxVol = parseFloat(document.getElementById('maxVol').value) || 2000;
     let stepVol = parseFloat(document.getElementById('stepVol').value) || 100;
 
-    let processedVolume = maxVol - (ticksBelowMax * stepVol);
+    let processedVolume = maxVol - (ticksDiscounted * stepVol);
     processedVolume = Math.max(0, processedVolume);
 
-    // 6. COLORIMETRIA DA URINA (Amostragem abaixo do Nível Hidroaéreo)
-    let samplePixel = (Math.min(height - 1, hydroLevelY + 12) * width + Math.floor((minX + maxX) / 2)) * 4;
+    // 7. COLORIMETRIA DA URINA (Amostragem no Centro da Região com Fluido)
+    let sampleY = Math.min(height - 5, hydroLevelY + 15);
+    let sampleX = Math.floor((minX + maxX) / 2);
+    let samplePixel = (sampleY * width + sampleX) * 4;
+
     let r = data[samplePixel], g = data[samplePixel + 1], b = data[samplePixel + 2];
     let colorData = classifyUrineColor(r, g, b);
 
-    // 7. DESENHO AUTOMÁTICO DAS MARCAÇÕES NO VISOR
-    // Retângulo Verde = Delimitação da ROI da Bolsa
+    // 8. DESENHO DAS GUIA VISUAIS NO CANVAS
     ctx.strokeStyle = '#198754';
     ctx.lineWidth = 2;
-    ctx.strokeRect(minX, minY, maxX - minX, maxY - minY);
+    ctx.strokeRect(minX, minY, bagWidth, maxY - minY);
 
-    // Linha Azul = Topo da Escala
+    ctx.strokeStyle = '#ffc107';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(scaleColStart, scaleTopY, scaleColEnd - scaleColStart, hydroLevelY - scaleTopY);
+
     ctx.strokeStyle = '#0d6efd';
     ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(minX, scaleTopY);
+    ctx.moveTo(scaleColStart, scaleTopY);
     ctx.lineTo(maxX, scaleTopY);
     ctx.stroke();
 
-    // Linha Vermelha = Nível Hidroaéreo
     ctx.strokeStyle = '#dc3545';
     ctx.lineWidth = 4;
     ctx.beginPath();
@@ -513,7 +512,6 @@ function processAutomaticBagSegmentation(timestamp) {
     ctx.lineTo(maxX, hydroLevelY);
     ctx.stroke();
 
-    // Atualização da Interface do Usuário
     currentResult = {
         timestamp: timestamp,
         volume: processedVolume,
@@ -522,7 +520,7 @@ function processAutomaticBagSegmentation(timestamp) {
     };
 
     document.getElementById('resTimestamp').innerText = timestamp.toLocaleString('pt-BR');
-    document.getElementById('resTicks').innerText = ticksBelowMax;
+    document.getElementById('resTicks').innerText = ticksDiscounted;
     document.getElementById('resVol').innerText = processedVolume;
     document.getElementById('resColorText').innerText = colorData.name;
     document.getElementById('resColorBadge').style.backgroundColor = colorData.hex;
