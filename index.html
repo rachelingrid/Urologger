@@ -1,18 +1,20 @@
+
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Urologger - Detecção Geométrica da Escala por Traços Verdes</title>
+    <title>Urologger - Processamento por Terço da Bolsa (Escala Isolada)</title>
 
     <!-- Bootstrap 5 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
-    <!-- Chart.js, html2pdf.js e exifr -->
+    <!-- Chart.js, html2pdf.js, exifr e Tesseract.js (Engine OCR) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/exifr@7.1.3/dist/full.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 
     <style>
         body { background-color: #f4f6f9; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
@@ -21,6 +23,8 @@
         #imageCanvas { width: 100%; height: auto; border: 2px solid #2b2b2b; border-radius: 8px; background: #111; }
         .color-badge { width: 22px; height: 22px; border-radius: 50%; display: inline-block; border: 1px solid #ccc; vertical-align: middle; }
         .guide-box { background-color: #eef2f7; border-left: 4px solid #0d6efd; padding: 12px; border-radius: 6px; }
+
+        #ocrLoadingSpinner { display: none; margin-top: 10px; }
 
         /* Template do Relatório PDF Estruturado */
         #pdfReportTemplate { display: none; background: #fff; padding: 30px; font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; }
@@ -37,9 +41,9 @@
     <header class="d-flex justify-content-between align-items-center pb-3 mb-4 border-bottom">
         <div>
             <h3 class="fw-bold text-primary mb-0">Urologger</h3>
-            <small class="text-muted">Processamento Geométrico via Traços Verdes da Escala</small>
+            <small class="text-muted">Processamento Isolado no Primeiro Terço da Bolsa (Coluna de Escala)</small>
         </div>
-        <span class="badge bg-primary px-3 py-2">v4.5 - Escala por Traço Físico</span>
+        <span class="badge bg-primary px-3 py-2">v5.5 - Segmentação em 1/3</span>
     </header>
 
     <div class="row g-4">
@@ -112,6 +116,10 @@
 
                 <div id="canvasContainer" class="text-center">
                     <canvas id="imageCanvas"></canvas>
+                    <div id="ocrLoadingSpinner" class="text-center py-2">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <span class="small text-muted ms-2" id="ocrStatusText">Analisando primeiro terço e identificando escala...</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -121,7 +129,7 @@
     <div class="row mt-4" id="clinicalSection" style="display: none;">
         <div class="col-12">
             <div class="card p-4 border-start border-primary border-4">
-                <h5 class="fw-bold mb-3 text-dark">4. Resultado Automático da Imagem & Avaliação Clínica</h5>
+                <h5 class="fw-bold mb-3 text-dark">4. Resultado da Análise no 1º Terço & Avaliação Clínica</h5>
                 <div class="row g-3">
                     <div class="col-md-4 border-end">
                         <div class="mb-2">
@@ -129,11 +137,11 @@
                             <div class="fw-bold text-dark small" id="resTimestamp">--/--/---- --:--</div>
                         </div>
                         <div class="mb-2">
-                            <span class="text-muted small">Traço Interceptado no Nível:</span>
-                            <div class="fs-6 fw-bold text-primary" id="resTickDetails">Aguardando...</div>
+                            <span class="text-muted small">Mapeamento do 1º Terço (Escala):</span>
+                            <div class="fs-6 fw-bold text-primary" id="resOcrDetails">Aguardando...</div>
                         </div>
                         <div class="mb-3">
-                            <span class="text-muted small">Volume Automatizado Processado:</span>
+                            <span class="text-muted small">Volume Processado:</span>
                             <div class="fs-2 fw-bold text-success"><span id="resVol">0</span> <small class="fs-6 text-dark">mL</small></div>
                         </div>
                         <div class="mb-2">
@@ -233,12 +241,12 @@
             </div>
             <div class="modal-body small">
                 <div class="guide-box mb-3">
-                    <strong>⚠️ Para garantir a detecção precisa de cada traço verde da escala:</strong>
+                    <strong>⚠️ Para garantir a precisão no enquadramento do 1º terço da bolsa:</strong>
                 </div>
                 <ol class="mb-0 ps-3">
-                    <li class="mb-2"><strong>Foco nos Traços:</strong> Garanta nitidez nos traços verdes da metade esquerda.</li>
-                    <li class="mb-2"><strong>Perpendicularidade:</strong> Mantenha o celular paralelo à bolsa.</li>
-                    <li class="mb-1"><strong>Estabilização:</strong> Aguarde o líquido parar de chacoalhar.</li>
+                    <li class="mb-2"><strong>Visibilidade da Escala:</strong> Certifique-se de que o lado esquerdo da bolsa (coluna de traços) esteja visível e em foco.</li>
+                    <li class="mb-2"><strong>Perpendicularidade:</strong> Mantenha a câmera paralela ao plano da bolsa.</li>
+                    <li class="mb-1"><strong>Estabilização:</strong> Aguarde o menisco do fluido se estabilizar antes da foto.</li>
                 </ol>
             </div>
             <div class="modal-footer py-2">
@@ -253,7 +261,7 @@
 <div id="pdfReportTemplate">
     <div style="text-align: center; margin-bottom: 20px;">
         <h2 style="margin: 0; font-size: 20pt;">RELATÓRIO CLÍNICO DE MONITORAMENTO URINÁRIO</h2>
-        <p style="margin: 5px 0 0 0; color: #666; font-size: 10pt;">Análise Geométricas dos Traços Verdes - Urologger</p>
+        <p style="margin: 5px 0 0 0; color: #666; font-size: 10pt;">Análise Isolada no Terço Esquerdo do Coletor - Urologger</p>
     </div>
 
     <div style="background: #f7fafc; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 10pt;">
@@ -355,8 +363,10 @@ async function extractAcquisitionTimestamp(file) {
     return new Date(file.lastModified || Date.now());
 }
 
-// ALGORITMO DE PROCESSAMENTO GEOMÉTRICO DOS TRAÇOS VERDES (ESCALA DE 100 EM 100 mL)
-function processAutomaticBagSegmentation(timestamp) {
+// ALGORITMO: DIVISÃO EM 3 TERÇOS IGUAIS ➔ PROCESSAMENTO ISOLADO NO 1º TERÇO (ESCALA)
+async function processAutomaticBagSegmentation(timestamp) {
+    document.getElementById('ocrLoadingSpinner').style.display = 'block';
+
     const canvas = document.getElementById('imageCanvas');
     const ctx = canvas.getContext('2d');
 
@@ -377,11 +387,13 @@ function processAutomaticBagSegmentation(timestamp) {
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
 
-    // 1. ISOLAR O CORPO DA BOLSA (Descartando o cabide superior)
+    // =========================================================================
+    // 1. LOCALIZAR BORDAS REAIS DA BOLSA (Ignorar cabide de suporte superior)
+    // =========================================================================
     let bagMinX = width, bagMaxX = 0, bagMinY = height, bagMaxY = 0;
 
     for (let y = Math.floor(height * 0.20); y < Math.floor(height * 0.90); y++) {
-        for (let x = Math.floor(width * 0.10); x < Math.floor(width * 0.90); x++) {
+        for (let x = Math.floor(width * 0.08); x < Math.floor(width * 0.92); x++) {
             let i = (y * width + x) * 4;
             let r = data[i], g = data[i+1], b = data[i+2];
 
@@ -403,17 +415,24 @@ function processAutomaticBagSegmentation(timestamp) {
     let bagWidth = bagMaxX - bagMinX;
     let bagHeight = bagMaxY - bagMinY;
 
-    // 2. METADE ESQUERDA DA BOLSA (Coluna Estrita dos Traços Verdes: 10% a 38% da bolsa)
-    let ticksColStart = bagMinX + Math.floor(bagWidth * 0.10);
-    let ticksColEnd   = bagMinX + Math.floor(bagWidth * 0.38);
+    // =========================================================================
+    // 2. DIVISÃO DA BOLSA EM 3 TERÇOS IGUAIS (ISOLAR O TERÇO 1 - ESCALA ESQUERDA)
+    // =========================================================================
+    let oneThirdWidth = Math.floor(bagWidth / 3);
 
-    // 3. DETECÇÃO DO NÍVEL HIDROAÉREO REAL (Menisco da Urina)
+    // O Primeiro Terço engloba a coluna inteira dos traços graduados e numerais
+    let third1_MinX = bagMinX;
+    let third1_MaxX = bagMinX + oneThirdWidth;
+
+    // =========================================================================
+    // 3. DETECÇÃO DO NÍVEL HIDROAÉREO REAL DENTRO DO PRIMEIRO TERÇO
+    // =========================================================================
     let hydroLevelY = Math.floor(bagMinY + bagHeight * 0.5);
     let maxYellowDiff = 0;
 
     for (let y = bagMinY + 15; y < bagMaxY - 15; y++) {
         let yellowScore = 0;
-        for (let x = ticksColStart; x < ticksColEnd; x++) {
+        for (let x = third1_MinX + 5; x < third1_MaxX - 5; x++) {
             let iTop = (y * width + x) * 4;
             let iBot = ((y + 4) * width + x) * 4;
 
@@ -430,23 +449,25 @@ function processAutomaticBagSegmentation(timestamp) {
         }
     }
 
-    // 4. LOCALIZAR TODOS OS TRAÇOS VERDES DA ESCALA NA COLUNA ESQUERDA
+    // =========================================================================
+    // 4. DETECÇÃO E MAPEAMENTO DOS TRAÇOS DE CONTRASTE NO 1º TERÇO
+    // =========================================================================
     let detectedTicksY = [];
     let insideGreenTick = false;
     let tickStartY = 0;
 
     for (let y = bagMinY + 10; y < bagMaxY - 10; y++) {
         let greenPixels = 0;
-        for (let x = ticksColStart; x < ticksColEnd; x++) {
+        for (let x = third1_MinX; x < third1_MaxX; x++) {
             let i = (y * width + x) * 4;
             let r = data[i], g = data[i+1], b = data[i+2];
 
-            // Filtro para detectar a tinta verde/escura dos traços graduados
-            let isGreenTick = (g > r + 12 && g > b + 12 && g < 150) || (r < 100 && g < 120 && b < 100);
+            // Tinta verde/escuro das marcações de contraste no 1º terço
+            let isGreenTick = (g > r + 10 && g > b + 10 && g < 150) || (r < 100 && g < 120 && b < 100);
             if (isGreenTick) greenPixels++;
         }
 
-        let isRowTick = greenPixels > (ticksColEnd - ticksColStart) * 0.22;
+        let isRowTick = greenPixels > (third1_MaxX - third1_MinX) * 0.18;
 
         if (isRowTick && !insideGreenTick) {
             insideGreenTick = true;
@@ -458,15 +479,77 @@ function processAutomaticBagSegmentation(timestamp) {
         }
     }
 
-    // 5. MAPEAMENTO DOS VALORES DOS TRAÇOS DA B. BRAUN (De 2000 até 100 em passos de 100 mL)
+    // =========================================================================
+    // 5. VALIDAÇÃO OCR MATRENCIAL DOS NUMERAIS DENTRO DO 1º TERÇO
+    // =========================================================================
+    let ocrDetectedVol = null;
+    let detailsText = "";
+
+    try {
+        let ocrCanvas = document.createElement('canvas');
+        let ocrW = third1_MaxX - third1_MinX;
+        let ocrH = bagHeight;
+        ocrCanvas.width = ocrW;
+        ocrCanvas.height = ocrH;
+        let ocrCtx = ocrCanvas.getContext('2d');
+
+        ocrCtx.drawImage(canvas, third1_MinX, bagMinY, ocrW, ocrH, 0, 0, ocrW, ocrH);
+
+        const worker = await Tesseract.createWorker('eng');
+        await worker.setParameters({
+            tessedit_char_whitelist: '0123456789',
+        });
+
+        const ocrResult = await worker.recognize(ocrCanvas);
+        await worker.terminate();
+
+        const validVolumes = [2000, 1800, 1600, 1400, 1200, 1000, 800, 600, 400, 300, 200, 100];
+        let detectedPoints = [];
+
+        if (ocrResult.data && ocrResult.data.words) {
+            ocrResult.data.words.forEach(w => {
+                let num = parseInt(w.text.trim(), 10);
+                if (validVolumes.includes(num)) {
+                    let absoluteY = bagMinY + Math.floor((w.bbox.y0 + w.bbox.y1) / 2);
+                    detectedPoints.push({ vol: num, y: absoluteY });
+                }
+            });
+        }
+
+        detectedPoints.sort((a, b) => a.y - b.y);
+
+        if (detectedPoints.length >= 2) {
+            let upper = null, lower = null;
+            for (let p of detectedPoints) {
+                if (p.y <= hydroLevelY) upper = p;
+                else { lower = p; break; }
+            }
+
+            if (upper && lower) {
+                let ratio = (hydroLevelY - upper.y) / (lower.y - upper.y);
+                let rawVol = upper.vol - ratio * (upper.vol - lower.vol);
+                ocrDetectedVol = Math.round(rawVol / 50) * 50;
+                detailsText = `1º Terço: Interpolação entre ${upper.vol} e ${lower.vol} mL`;
+            } else if (upper) {
+                ocrDetectedVol = upper.vol;
+            } else if (lower) {
+                ocrDetectedVol = lower.vol;
+            }
+        }
+    } catch (err) {
+        console.warn("OCR no 1º Terço indisponível, aplicando fallback por traço:", err);
+    }
+
+    document.getElementById('ocrLoadingSpinner').style.display = 'none';
+
+    // =========================================================================
+    // 6. CÁLCULO FINAL DO VOLUME (Drapeamento por Traços Físicos do 1º Terço)
+    // =========================================================================
     let maxVol = parseFloat(document.getElementById('maxVol').value) || 2000;
     let stepVol = parseFloat(document.getElementById('stepVol').value) || 100;
+    let finalVolume = ocrDetectedVol;
 
-    let processedVolume = maxVol;
-    let tickDetailsText = "";
-
-    if (detectedTicksY.length >= 2) {
-        // Encontrar qual traço verde está mais próximo da linha do nível hidroaéreo
+    if (finalVolume === null && detectedTicksY.length >= 2) {
         let closestTickIdx = 0;
         let minDistance = Math.abs(detectedTicksY[0] - hydroLevelY);
 
@@ -478,67 +561,68 @@ function processAutomaticBagSegmentation(timestamp) {
             }
         }
 
-        // O primeiro traço no topo é 2000, o segundo é 1900, o próximo é 1800...
-        // Cada traço reduz exatamente 100 mL
-        processedVolume = maxVol - (closestTickIdx * stepVol);
-        processedVolume = Math.max(100, Math.min(maxVol, processedVolume));
-
-        tickDetailsText = `Nível alinhado ao traço #${closestTickIdx + 1} da escala (${processedVolume} mL)`;
-    } else {
-        // Fallback por proporção direta
+        finalVolume = maxVol - (closestTickIdx * stepVol);
+        detailsText = `1º Terço: Alinhado ao traço #${closestTickIdx + 1} da escala`;
+    } else if (finalVolume === null) {
         let ratio = 1.0 - ((hydroLevelY - bagMinY) / bagHeight);
-        processedVolume = Math.round((100 + ratio * (maxVol - 100)) / 100) * 100;
-        tickDetailsText = "Interpolação de nível direto na escala";
+        finalVolume = Math.round((100 + ratio * (maxVol - 100)) / 100) * 100;
+        detailsText = "1º Terço: Proporção geométrica de escala";
     }
 
-    // 6. COLORIMETRIA DA URINA (Amostragem abaixo do nível hidroaéreo)
+    finalVolume = Math.max(100, Math.min(maxVol, finalVolume));
+
+    // =========================================================================
+    // 7. COLORIMETRIA DA URINA (Amostragem no Centro do 1º Terço)
+    // =========================================================================
     let sampleY = Math.min(height - 5, hydroLevelY + 15);
-    let sampleX = Math.floor((ticksColStart + bagMaxX) / 2);
+    let sampleX = Math.floor((third1_MinX + third1_MaxX) / 2);
     let samplePixel = (sampleY * width + sampleX) * 4;
 
     let r = data[samplePixel], g = data[samplePixel + 1], b = data[samplePixel + 2];
     let colorData = classifyUrineColor(r, g, b);
 
-    // 7. DESENHAR GUIAS VISUAIS NO CANVAS
+    // =========================================================================
+    // 8. DESENHAR GUIAS VISUAIS NO VISOR
+    // =========================================================================
     // Caixa Verde = Limite do Corpo da Bolsa
     ctx.strokeStyle = '#198754';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.5;
     ctx.strokeRect(bagMinX, bagMinY, bagWidth, bagHeight);
 
-    // Caixa Amarela Fina = Coluna Esquerda de Traços Analisada
+    // Caixa Amarela Destaque = PRIMEIRO TERÇO DA BOLSA (Escala Exclusiva)
     ctx.strokeStyle = '#ffc107';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(ticksColStart, bagMinY, ticksColEnd - ticksColStart, bagHeight);
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(third1_MinX, bagMinY, oneThirdWidth, bagHeight);
 
-    // Marcar com traços azuis todos os traços verdes detectados na escala
+    // Desenhar traços azuis onde a escala de contraste foi identificada no 1º terço
     ctx.strokeStyle = '#0d6efd';
     ctx.lineWidth = 2;
     detectedTicksY.forEach(tY => {
         ctx.beginPath();
-        ctx.moveTo(ticksColStart, tY);
-        ctx.lineTo(ticksColEnd, tY);
+        ctx.moveTo(third1_MinX, tY);
+        ctx.lineTo(third1_MaxX, tY);
         ctx.stroke();
     });
 
-    // Linha Vermelha Espessa = Nível Hidroaéreo Exato
+    // Linha Vermelha Espessa = Nível Hidroaéreo Aferido no 1º Terço
     ctx.strokeStyle = '#dc3545';
     ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.moveTo(bagMinX, hydroLevelY);
-    ctx.lineTo(bagMaxX, hydroLevelY);
+    ctx.moveTo(third1_MinX, hydroLevelY);
+    ctx.lineTo(third1_MaxX, hydroLevelY);
     ctx.stroke();
 
-    // Atualização da Interface
+    // Atualização dos Resultados na Interface
     currentResult = {
         timestamp: timestamp,
-        volume: processedVolume,
+        volume: finalVolume,
         colorName: colorData.name,
         colorHex: colorData.hex
     };
 
     document.getElementById('resTimestamp').innerText = timestamp.toLocaleString('pt-BR');
-    document.getElementById('resTickDetails').innerText = tickDetailsText;
-    document.getElementById('resVol').innerText = processedVolume;
+    document.getElementById('resOcrDetails').innerText = detailsText;
+    document.getElementById('resVol').innerText = finalVolume;
     document.getElementById('resColorText').innerText = colorData.name;
     document.getElementById('resColorBadge').style.backgroundColor = colorData.hex;
     document.getElementById('clinicalSection').style.display = 'block';
