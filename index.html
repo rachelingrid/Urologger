@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Urologger - Detecção Focada no 1º Terço e Menisco Real</title>
+    <title>Urologger - Detecção Multifaixa de Menisco e Calibração da Escala</title>
 
     <!-- Bootstrap 5 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -42,7 +42,7 @@
             <h3 class="fw-bold text-primary mb-0">Urologger</h3>
             <small class="text-muted">Aferição Focada na Coluna da Escala & Traços da B. Braun</small>
         </div>
-        <span class="badge bg-primary px-3 py-2">v6.5 - Refinamento do 1º Terço</span>
+        <span class="badge bg-primary px-3 py-2">v6.6 - Menisco Multifaixa</span>
     </header>
 
     <div class="row g-4">
@@ -416,27 +416,119 @@ async function processAutomaticBagSegmentation(timestamp) {
     let third1_MinX = bagMinX + Math.floor(bagWidth * 0.08);
     let third1_MaxX = bagMinX + Math.floor(bagWidth * 0.32);
 
-    // 2. DETECÇÃO DO MENISCO REAL (DE CIMA PARA BAIXO)
-    let hydroLevelY = Math.floor(bagMinY + bagHeight * 0.5);
-    let maxYellowDiff = 0;
+    // 2. DETECÇÃO DO MENISCO REAL EM FAIXAS LIMPAS DA BOLSA
+    // A escala impressa da esquerda fica reservada para OCR/calibração.
+    // O nível é estimado pela transição cromática ar/plástico -> líquido em 3 faixas independentes.
+    const meniscusBands = [
+        [bagMinX + Math.floor(bagWidth * 0.28), bagMinX + Math.floor(bagWidth * 0.42)],
+        [bagMinX + Math.floor(bagWidth * 0.62), bagMinX + Math.floor(bagWidth * 0.74)],
+        [bagMinX + Math.floor(bagWidth * 0.78), bagMinX + Math.floor(bagWidth * 0.90)]
+    ];
 
-    for (let y = bagMinY + 10; y < bagMaxY - 10; y++) {
-        let yellowScore = 0;
-        for (let x = third1_MinX; x < third1_MaxX; x++) {
-            let iTop = (y * width + x) * 4;
-            let iBot = ((y + 4) * width + x) * 4;
+    const medianOf = (values) => {
+        const v = values.filter(Number.isFinite).sort((a, b) => a - b);
+        if (!v.length) return NaN;
+        const m = Math.floor(v.length / 2);
+        return (v.length % 2) ? v[m] : (v[m - 1] + v[m]) / 2;
+    };
 
-            let topWhiteness = (data[iTop] + data[iTop+1] + data[iTop+2]) / 3;
-            let botYellowVal = (data[iBot] + data[iBot+1]) - (data[iBot+2] * 1.5);
+    const rowYellowIndex = (y, x0, x1) => {
+        let values = [];
 
-            let diff = (botYellowVal - (topWhiteness * 0.45));
-            if (diff > 0) yellowScore += diff;
+        for (let x = x0; x < x1; x++) {
+            let i = (y * width + x) * 4;
+            let r = data[i], g = data[i + 1], b = data[i + 2];
+
+            let brightness = (r + g + b) / 3;
+            let isStrongGreen = (g > r + 12 && g > b + 12);
+            let isVeryDark = brightness < 45;
+
+            // Remove impressão verde, sombras profundas e partes muito escuras.
+            if (isStrongGreen || isVeryDark) continue;
+
+            // Índice cromático normalizado: líquido amarelado tende a elevar R/G em relação a B.
+            let yellowIndex = ((((r + g) * 0.5) - b) / (r + g + b + 1));
+            values.push(yellowIndex);
         }
 
-        if (yellowScore > maxYellowDiff) {
-            maxYellowDiff = yellowScore;
-            hydroLevelY = y;
+        return medianOf(values);
+    };
+
+    let bandCandidates = [];
+    const transitionWindow = 14;
+    const searchStartY = bagMinY + Math.floor(bagHeight * 0.18);
+    const searchEndY = bagMaxY - Math.floor(bagHeight * 0.08);
+
+    for (const [x0, x1] of meniscusBands) {
+        let bestY = null;
+        let bestScore = -Infinity;
+
+        for (let y = searchStartY; y < searchEndY; y++) {
+            let topRows = [];
+            let bottomRows = [];
+
+            // Compara regiões separadas da linha candidata em vez de apenas 1 pixel acima/abaixo.
+            for (let dy = 4; dy <= transitionWindow; dy++) {
+                if (y - dy <= bagMinY || y + dy >= bagMaxY) continue;
+
+                let topVal = rowYellowIndex(y - dy, x0, x1);
+                let bottomVal = rowYellowIndex(y + dy, x0, x1);
+
+                if (Number.isFinite(topVal)) topRows.push(topVal);
+                if (Number.isFinite(bottomVal)) bottomRows.push(bottomVal);
+            }
+
+            if (topRows.length < 4 || bottomRows.length < 4) continue;
+
+            let topMedian = medianOf(topRows);
+            let bottomMedian = medianOf(bottomRows);
+            let transitionScore = bottomMedian - topMedian;
+
+            if (transitionScore > bestScore) {
+                bestScore = transitionScore;
+                bestY = y;
+            }
         }
+
+        // Evita aceitar dobras/reflexos com contraste cromático muito fraco.
+        if (bestY !== null && bestScore > 0.02) {
+            bandCandidates.push({ y: bestY, score: bestScore, x0, x1 });
+        }
+    }
+
+    let hydroLevelY = Math.floor(bagMinY + bagHeight * 0.60);
+    let meniscusConfidence = 0;
+
+    if (bandCandidates.length >= 2) {
+        let medianY = medianOf(bandCandidates.map(c => c.y));
+        let tolerance = Math.max(6, Math.floor(bagHeight * 0.05));
+
+        // RANSAC simplificado: elimina uma faixa que discordar fortemente das demais.
+        let inliers = bandCandidates.filter(c => Math.abs(c.y - medianY) <= tolerance);
+
+        if (inliers.length >= 2) {
+            let weightSum = 0;
+            let weightedY = 0;
+
+            inliers.forEach(c => {
+                let w = Math.max(c.score, 0.001);
+                weightedY += c.y * w;
+                weightSum += w;
+            });
+
+            hydroLevelY = Math.round(weightedY / weightSum);
+
+            let scoreMedian = medianOf(inliers.map(c => c.score));
+            meniscusConfidence = Math.min(
+                1,
+                (inliers.length / meniscusBands.length) * Math.min(1, scoreMedian / 0.08)
+            );
+        } else {
+            hydroLevelY = Math.round(medianY);
+        }
+    } else if (bandCandidates.length === 1) {
+        hydroLevelY = bandCandidates[0].y;
+        meniscusConfidence = Math.min(0.45, bandCandidates[0].score / 0.10);
     }
 
     // 3. RECONHECIMENTO OCR DA ESCALA DENTRO DO 1º TERÇO
@@ -592,6 +684,19 @@ async function processAutomaticBagSegmentation(timestamp) {
         ctx.arc(third1_MinX + 8, p.y, 4, 0, 2 * Math.PI);
         ctx.fill();
     });
+
+    // Guias laranja tracejadas = candidatos independentes do menisco
+    ctx.save();
+    ctx.strokeStyle = '#fd7e14';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    bandCandidates.forEach(c => {
+        ctx.beginPath();
+        ctx.moveTo(c.x0, c.y);
+        ctx.lineTo(c.x1, c.y);
+        ctx.stroke();
+    });
+    ctx.restore();
 
     // Linha Vermelha = Ponto exato do Menisco de Urina
     ctx.strokeStyle = '#dc3545';
