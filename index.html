@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Urologger - Detecção de Transição do Plástico & OCR Correlacionado</title>
+    <title>Urologger - Detecção Focada no 1º Terço e Menisco Real</title>
 
     <!-- Bootstrap 5 -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -40,9 +40,9 @@
     <header class="d-flex justify-content-between align-items-center pb-3 mb-4 border-bottom">
         <div>
             <h3 class="fw-bold text-primary mb-0">Urologger</h3>
-            <small class="text-muted">Aferição por Transição de Cor do Plástico e Correlação OCR de Traços</small>
+            <small class="text-muted">Aferição Focada na Coluna da Escala & Traços da B. Braun</small>
         </div>
-        <span class="badge bg-primary px-3 py-2">v6.0 - Detecção de Plástico & OCR</span>
+        <span class="badge bg-primary px-3 py-2">v6.5 - Refinamento do 1º Terço</span>
     </header>
 
     <div class="row g-4">
@@ -117,7 +117,7 @@
                     <canvas id="imageCanvas"></canvas>
                     <div id="ocrLoadingSpinner" class="text-center py-2">
                         <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                        <span class="small text-muted ms-2" id="ocrStatusText">Analisando término do plástico branco e correlacionando OCR...</span>
+                        <span class="small text-muted ms-2" id="ocrStatusText">Aferindo menisco do líquido e correlacionando escala...</span>
                     </div>
                 </div>
             </div>
@@ -128,7 +128,7 @@
     <div class="row mt-4" id="clinicalSection" style="display: none;">
         <div class="col-12">
             <div class="card p-4 border-start border-primary border-4">
-                <h5 class="fw-bold mb-3 text-dark">4. Resultado da Análise Combinada & Avaliação Clínica</h5>
+                <h5 class="fw-bold mb-3 text-dark">4. Resultado da Análise no 1º Terço & Avaliação Clínica</h5>
                 <div class="row g-3">
                     <div class="col-md-4 border-end">
                         <div class="mb-2">
@@ -136,7 +136,7 @@
                             <div class="fw-bold text-dark small" id="resTimestamp">--/--/---- --:--</div>
                         </div>
                         <div class="mb-2">
-                            <span class="text-muted small">Alinhamento de Traços / OCR:</span>
+                            <span class="text-muted small">Mapeamento da Escala no 1º Terço:</span>
                             <div class="fs-6 fw-bold text-primary" id="resOcrDetails">Aguardando...</div>
                         </div>
                         <div class="mb-3">
@@ -260,7 +260,7 @@
 <div id="pdfReportTemplate">
     <div style="text-align: center; margin-bottom: 20px;">
         <h2 style="margin: 0; font-size: 20pt;">RELATÓRIO CLÍNICO DE MONITORAMENTO URINÁRIO</h2>
-        <p style="margin: 5px 0 0 0; color: #666; font-size: 10pt;">Detecção por Transição de Plástico e OCR - Urologger</p>
+        <p style="margin: 5px 0 0 0; color: #666; font-size: 10pt;">Aferição Focada na Coluna da Escala - Urologger</p>
     </div>
 
     <div style="background: #f7fafc; padding: 15px; border-radius: 6px; margin-bottom: 20px; font-size: 10pt;">
@@ -362,7 +362,7 @@ async function extractAcquisitionTimestamp(file) {
     return new Date(file.lastModified || Date.now());
 }
 
-// PROCESSAMENTO PRINCIPAL: TRANSIÇÃO DO PLÁSTICO + OCR + CORRELAÇÃO DE TRAÇOS
+// PROCESSAMENTO MATRENCIAL REFINADO NO 1º TERÇO DA ESCALA
 async function processAutomaticBagSegmentation(timestamp) {
     document.getElementById('ocrLoadingSpinner').style.display = 'block';
 
@@ -386,7 +386,7 @@ async function processAutomaticBagSegmentation(timestamp) {
     const imageData = ctx.getImageData(0, 0, width, height);
     const data = imageData.data;
 
-    // 1. ISOLAR A BOLSA E O PRIMEIRO TERÇO (Coluna Esquerda da Escala)
+    // 1. ANCORAGEM RÍGIDA DO CORPO DA BOLSA
     let bagMinX = width, bagMaxX = 0, bagMinY = height, bagMaxY = 0;
 
     for (let y = Math.floor(height * 0.20); y < Math.floor(height * 0.90); y++) {
@@ -412,36 +412,34 @@ async function processAutomaticBagSegmentation(timestamp) {
     let bagWidth = bagMaxX - bagMinX;
     let bagHeight = bagMaxY - bagMinY;
 
-    // Primeiro Terço da Bolsa (0% a 33% da largura)
-    let third1_MinX = bagMinX;
-    let third1_MaxX = bagMinX + Math.floor(bagWidth / 3);
+    // FIXAÇÃO ESTRITA DO 1º TERÇO (Coluna Esquerda da Escala: 8% a 32% da largura da bolsa)
+    let third1_MinX = bagMinX + Math.floor(bagWidth * 0.08);
+    let third1_MaxX = bagMinX + Math.floor(bagWidth * 0.32);
 
-    // 2. DETECTAR O PONTO ONDE A BOLSA BRANCA/TRANSPARENTE DEIXA DE SER BRANCA (Transição do Plástico para Urina)
+    // 2. DETECÇÃO DO MENISCO REAL (DE CIMA PARA BAIXO)
     let hydroLevelY = Math.floor(bagMinY + bagHeight * 0.5);
-    let maxWhiteToYellowDiff = 0;
+    let maxYellowDiff = 0;
 
-    for (let y = bagMinY + 15; y < bagMaxY - 15; y++) {
-        let transitionScore = 0;
-        for (let x = third1_MinX + 5; x < third1_MaxX - 5; x++) {
+    for (let y = bagMinY + 10; y < bagMaxY - 10; y++) {
+        let yellowScore = 0;
+        for (let x = third1_MinX; x < third1_MaxX; x++) {
             let iTop = (y * width + x) * 4;
             let iBot = ((y + 4) * width + x) * 4;
 
-            // Intensidade do plástico branco seco no topo (R+G+B elevados e equilibrados)
             let topWhiteness = (data[iTop] + data[iTop+1] + data[iTop+2]) / 3;
-            // Surgimento do tom amarelado/âmbar na base (Saturação de R+G com queda relativa de B)
-            let botYellowValue = (data[iBot] + data[iBot+1]) - (data[iBot+2] * 1.5);
+            let botYellowVal = (data[iBot] + data[iBot+1]) - (data[iBot+2] * 1.5);
 
-            let diff = (botYellowValue - (topWhiteness * 0.5));
-            if (diff > 0) transitionScore += diff;
+            let diff = (botYellowVal - (topWhiteness * 0.45));
+            if (diff > 0) yellowScore += diff;
         }
 
-        if (transitionScore > maxWhiteToYellowDiff) {
-            maxWhiteToYellowDiff = transitionScore;
+        if (yellowScore > maxYellowDiff) {
+            maxYellowDiff = yellowScore;
             hydroLevelY = y;
         }
     }
 
-    // 3. EXECUÇÃO DO OCR NA ESCALA NUMERADA DO 1º TERÇO
+    // 3. RECONHECIMENTO OCR DA ESCALA DENTRO DO 1º TERÇO
     let detectedScalePoints = [];
     try {
         let ocrCanvas = document.createElement('canvas');
@@ -473,13 +471,13 @@ async function processAutomaticBagSegmentation(timestamp) {
             });
         }
     } catch (err) {
-        console.warn("OCR indisponível, aplicando cálculo de transição geométrica:", err);
+        console.warn("OCR indisponível, aplicando fallback por traço:", err);
     }
 
-    // Ordenar pontos OCR detectados
+    // Ordenar pontos de cima para baixo
     detectedScalePoints.sort((a, b) => a.y - b.y);
 
-    // 4. DETECTAR TODOS OS TRAÇOS FÍSICOS DA ESCALA (MARCAS DE CONTRASTE HORIZONTAIS)
+    // 4. DETECTAR TRAÇOS FÍSICOS HORIZONTAIS DA ESCALA NO 1º TERÇO
     let detectedTicksY = [];
     let insideGreenTick = false;
     let tickStartY = 0;
@@ -506,7 +504,7 @@ async function processAutomaticBagSegmentation(timestamp) {
         }
     }
 
-    // 5. CÁLCULO FINAL DE VOLUME COM CORRELAÇÃO RIGIDA ENTRE OCR E NÍVEL DO PLÁSTICO
+    // 5. INTERPOLAÇÃO FINAL DE VOLUME
     let validatedVolume = null;
     let detailsText = "";
 
@@ -520,18 +518,18 @@ async function processAutomaticBagSegmentation(timestamp) {
         if (upper && lower) {
             let ratio = (hydroLevelY - upper.y) / (lower.y - upper.y);
             let rawVol = upper.vol - ratio * (upper.vol - lower.vol);
-            validatedVolume = Math.round(rawVol / 50) * 50; // Arredondamento exato para múltiplos de 50/100 mL
-            detailsText = `Nível da urina interpolado entre os números ${upper.vol} mL e ${lower.vol} mL`;
+            validatedVolume = Math.round(rawVol / 50) * 50;
+            detailsText = `1º Terço: Interpolado entre os números ${upper.vol} e ${lower.vol} mL`;
         } else if (upper) {
             validatedVolume = upper.vol;
-            detailsText = `Ancorado no numeral ${upper.vol} mL`;
+            detailsText = `1º Terço: Ancorado no numeral ${upper.vol} mL`;
         } else if (lower) {
             validatedVolume = lower.vol;
-            detailsText = `Ancorado no numeral ${lower.vol} mL`;
+            detailsText = `1º Terço: Ancorado no numeral ${lower.vol} mL`;
         }
     }
 
-    // Fallback via contagem de traços se o OCR não ler números suficientes
+    // Fallback por traço caso o OCR não leia números suficientes
     if (validatedVolume === null && detectedTicksY.length >= 2) {
         let closestTickIdx = 0;
         let minDistance = Math.abs(detectedTicksY[0] - hydroLevelY);
@@ -547,19 +545,19 @@ async function processAutomaticBagSegmentation(timestamp) {
         let maxVol = parseFloat(document.getElementById('maxVol').value) || 2000;
         let stepVol = parseFloat(document.getElementById('stepVol').value) || 100;
         validatedVolume = maxVol - (closestTickIdx * stepVol);
-        detailsText = `Transição de cor alinhada ao traço #${closestTickIdx + 1} da escala`;
+        detailsText = `1º Terço: Alinhado ao traço #${closestTickIdx + 1} da escala`;
     } else if (validatedVolume === null) {
         let maxVol = parseFloat(document.getElementById('maxVol').value) || 2000;
         let ratio = 1.0 - ((hydroLevelY - bagMinY) / bagHeight);
         validatedVolume = Math.round((100 + ratio * (maxVol - 100)) / 100) * 100;
-        detailsText = "Proporção da transição de cor sobre a bolsa";
+        detailsText = "1º Terço: Estimativa por proporção de escala";
     }
 
     validatedVolume = Math.max(100, Math.min(2000, validatedVolume));
 
     document.getElementById('ocrLoadingSpinner').style.display = 'none';
 
-    // 6. COLORIMETRIA DA URINA (Amostragem no Líquido)
+    // 6. COLORIMETRIA DA URINA
     let sampleY = Math.min(height - 5, hydroLevelY + 15);
     let sampleX = Math.floor((third1_MinX + third1_MaxX) / 2);
     let samplePixel = (sampleY * width + sampleX) * 4;
@@ -568,17 +566,16 @@ async function processAutomaticBagSegmentation(timestamp) {
     let colorData = classifyUrineColor(r, g, b);
 
     // 7. DESENHAR GUIAS VISUAIS NO VISOR
-    // Caixa Verde = Limite do Corpo da Bolsa
     ctx.strokeStyle = '#198754';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(bagMinX, bagMinY, bagWidth, bagHeight);
 
-    // Caixa Amarela = PRIMEIRO TERÇO (Coluna da Escala Analisada)
+    // Caixa Amarela Fina = Coluna Estrita do 1º Terço Analisado
     ctx.strokeStyle = '#ffc107';
     ctx.lineWidth = 2.5;
     ctx.strokeRect(third1_MinX, bagMinY, third1_MaxX - third1_MinX, bagHeight);
 
-    // Desenhar traços azuis onde a escala de contraste foi identificada
+    // Traços azuis das marcas de escala detectadas
     ctx.strokeStyle = '#0d6efd';
     ctx.lineWidth = 2;
     detectedTicksY.forEach(tY => {
@@ -588,7 +585,7 @@ async function processAutomaticBagSegmentation(timestamp) {
         ctx.stroke();
     });
 
-    // Marcadores Verdes nos Números Lidos pelo OCR
+    // Marcadores Verdes nos Números do OCR
     ctx.fillStyle = '#198754';
     detectedScalePoints.forEach(p => {
         ctx.beginPath();
@@ -596,7 +593,7 @@ async function processAutomaticBagSegmentation(timestamp) {
         ctx.fill();
     });
 
-    // Linha Vermelha Espessa = Ponto exato onde o plástico branco deixa de ser branco (Nível da Urina)
+    // Linha Vermelha = Ponto exato do Menisco de Urina
     ctx.strokeStyle = '#dc3545';
     ctx.lineWidth = 4;
     ctx.beginPath();
@@ -604,7 +601,7 @@ async function processAutomaticBagSegmentation(timestamp) {
     ctx.lineTo(third1_MaxX, hydroLevelY);
     ctx.stroke();
 
-    // Atualização dos Resultados na Interface
+    // Atualização da Interface
     currentResult = {
         timestamp: timestamp,
         volume: validatedVolume,
