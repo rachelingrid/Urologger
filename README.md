@@ -29,32 +29,10 @@ O sistema roda **100% no lado do cliente (client-side)**, garantindo total priva
 └── README.md           # Este manual de documentação
 ```
 
-## 🛠️ Instalação e Execução Local
 
-Como o Urologger AI é um sistema estático, ele **não exige servidores nem dependências de backend**.
-
-1. **Clone o repositório:**
-   ```bash
-   git clone https://github.com
    ```
 2. **Navegue até a pasta:**
-   ```bash
-   cd urologger-ai
-   ```
-3. **Execute um servidor local** para testar as capacidades de Service Worker e PWA (necessário protocolo `http://localhost` ou `https`):
-   ```bash
-   # Utilizando Python 3
-   python -m http.server 8080
-   ```
 4. Abra o seu navegador em `http://localhost:8080`.
-
-## 🌐 Publicação no GitHub Pages
-
-1. Crie um repositório público no GitHub chamado `urologger-ai`.
-2. Envie todos os arquivos da raiz para o repositório.
-3. Acesse **Settings** > **Pages** no seu repositório do GitHub.
-4. Em **Build and deployment**, selecione a branch `main` (ou `master`) e a pasta `/ (root)`.
-5. Clique em **Save**. Em poucos minutos seu PWA estará disponível em `https://github.io`.
 
 ## 🔒 Declaração de Limitação de Responsabilidade (Disclaimer)
 Este software é uma prova de conceito de engenharia biomédica e processamento de imagens. Embora utilize métodos rigorosos de validação tripla, não substitui o julgamento clínico de profissionais de saúde qualificados. Os desenvolvedores não se responsabilizam por decisões médicas tomadas com base nas leituras automatizadas.
