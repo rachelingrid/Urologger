@@ -38,11 +38,15 @@ th{background:#f8f9fa;font-weight:600}
 .chk{display:flex;align-items:center;gap:6px;font-size:.83rem;margin:4px 0}
 .chk input{width:auto}
 .hide{display:none}
-.anchor-row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
-.anchor-row>div{flex:1 1 130px}
 .big{font-size:2rem;font-weight:700;color:var(--vd)}
 .leg{font-size:.75rem;color:var(--cz);margin-top:6px;line-height:1.5}
 .leg b{display:inline-block;width:11px;height:11px;border-radius:2px;vertical-align:-1px}
+dialog{width:min(560px,calc(100% - 28px));border:0;border-radius:14px;padding:0;box-shadow:0 18px 60px rgba(0,0,0,.28)}
+dialog::backdrop{background:rgba(17,24,39,.62)}
+.guide-head{background:var(--az);color:#fff;padding:14px 16px;font-weight:700}
+.guide-body{padding:16px;line-height:1.45}
+.guide-body ol{margin:0;padding-left:22px}.guide-body li{margin:0 0 8px}
+.guide-actions{display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--bd);padding:12px 16px}
 @media print{.noprint{display:none!important}body{background:#fff}.card{box-shadow:none;border:1px solid #ccc}}
 </style>
 </head>
@@ -50,8 +54,8 @@ th{background:#f8f9fa;font-weight:600}
 <div class="wrap">
 
 <header class="noprint">
-  <div><h3>Urologger</h3><small>Leitura do menisco por escala impressa — offline</small></div>
-  <span class="badge">v7.0 — traços + menisco paralelo</span>
+  <div><h3>Urologger</h3><small>Leitura conservadora do nível pela escala impressa</small></div>
+  <span class="badge">v7.1 — escala + OCR + contraste</span>
 </header>
 
 <div class="row noprint">
@@ -86,28 +90,41 @@ th{background:#f8f9fa;font-weight:600}
       </div>
       <canvas id="visor" width="520" height="380"></canvas>
       <div class="leg">
+        <b style="background:#198754"></b> coletor localizado &nbsp;
         <b style="background:#0d6efd"></b> traços detectados &nbsp;
-        <b style="background:#ffc107"></b> traço de referência &nbsp;
-        <b style="background:#dc3545"></b> menisco
+        <b style="background:#6f42c1"></b> números validados por OCR &nbsp;
+        <b style="background:#dc3545"></b> nível hidroaéreo
       </div>
       <div id="msg"></div>
     </div>
   </div>
 </div>
 
+<dialog id="guideModal" aria-labelledby="guideTitle">
+  <div class="guide-head" id="guideTitle">Instruções para aquisição da imagem</div>
+  <div class="guide-body">
+    <ol>
+      <li>Use o auxílio do nível/acelerômetro da câmera e mantenha a câmera perpendicular ao coletor.</li>
+      <li>Mantenha o local bem iluminado.</li>
+      <li>Não use flash.</li>
+      <li>Segure firmemente a câmera no momento da aquisição.</li>
+      <li>O coletor deve estar pendurado e nivelado.</li>
+      <li>Não deve haver nenhum artefato na frente do coletor.</li>
+      <li>Enquadre apenas o coletor e alinhe seus bordos aos bordos do campo visual da câmera.</li>
+    </ol>
+  </div>
+  <div class="guide-actions">
+    <button class="b4" type="button" onclick="closeGuide()">Cancelar</button>
+    <button class="b1" type="button" onclick="proceedToCapture()">Entendi, prosseguir</button>
+  </div>
+</dialog>
+
 <div class="card noprint hide" id="secResult">
   <h6>4. Conferência da leitura</h6>
   <div class="row">
     <div class="col">
-      <div class="anchor-row">
-        <div>
-          <label>O traço destacado em amarelo vale</label>
-          <select id="anchorVal" onchange="recompute()"></select>
-        </div>
-        <div style="flex:0 0 auto"><button class="b4" onclick="shiftAnchor(-1)">▲ traço acima</button></div>
-        <div style="flex:0 0 auto"><button class="b4" onclick="shiftAnchor(1)">▼ traço abaixo</button></div>
-      </div>
-      <p class="mut" style="margin:8px 0 0">Confira o número impresso ao lado do traço amarelo na foto. Esse é o único ajuste manual: a partir dele o volume é calculado por interpolação entre os traços vizinhos.</p>
+      <div class="alert a-ok" id="rOcr">Aguardando a validação da escala por OCR.</div>
+      <p class="mut" style="margin:8px 0 0">A leitura final usa apenas valores inteiros previstos na escala e escolhe sempre o valor inferior.</p>
       <div style="margin-top:14px">
         <span class="mut">Volume no coletor</span>
         <div><span class="big" id="rVol">0</span> <span style="font-weight:600">mL</span></div>
@@ -175,24 +192,15 @@ Os dados ficam apenas neste dispositivo — limpar o cache do navegador apaga o 
 
 <script>
 /* ==========================================================================
-   Urologger v7 — processamento de imagem
+   Urologger v7.1 — processamento de imagem
    --------------------------------------------------------------------------
-   Mudanças em relação à v6.5:
-   1. Sem dependências externas. Nada de CDN, Tesseract, Chart.js, html2pdf.
-      O arquivo roda sozinho, offline, servido pelo GitHub Pages.
-   2. A bolsa deixou de ser segmentada por cor. A referência passou a ser a
-      escala impressa, que é o único elemento com geometria conhecida.
-   3. Os traços são achados por componentes conexos na máscara verde-azulada,
-      filtrados por largura, altura e razão de aspecto, e agrupados pela borda
-      esquerda. Limiar adaptativo: tenta do mais estrito ao mais frouxo.
-   4. O menisco é procurado como reta PARALELA aos traços (a bolsa quase nunca
-      está no prumo), maximizando o degrau de amarelo entre acima e abaixo.
-      Buscar "a linha mais amarela", como fazia a v6.5, encontra o miolo do
-      líquido, não a superfície.
-   5. A leitura absoluta (qual traço vale quanto) não é resolúvel de forma
-      confiável em foto de mão: o topo costuma estar cortado e o padrão
-      longo/curto é ambíguo em múltiplos de 200 mL. Por isso o app propõe uma
-      âncora e pede uma confirmação de um toque. Todo o resto é automático.
+   Fluxo verificável:
+   1. localiza os bordos do coletor no enquadramento;
+   2. encontra a coluna de traços e delimita a região da escala;
+   3. lê os números por OCR e exige três referências coerentes com os dados
+      informados para o coletor;
+   4. encontra a interface ar-líquido por consenso de contraste em três faixas;
+   5. converte a altura em volume e arredonda sempre para o traço inferior.
    ========================================================================== */
 
 const V = document.getElementById('visor'), VX = V.getContext('2d');
@@ -202,9 +210,36 @@ let img=null, state=null, records=[];
 const $ = id => document.getElementById(id);
 function msg(t,k){ $('msg').innerHTML = t ? `<div class="alert a-${k}">${t}</div>` : ''; }
 
-function pick(w){ $(w==='cam'?'fCam':'fGal').click(); }
+let captureTarget=null;
+function pick(w){
+  captureTarget=w;
+  const d=$('guideModal');
+  if(typeof d.showModal==='function') d.showModal();
+  else d.setAttribute('open','');
+}
+function closeGuide(){
+  const d=$('guideModal');
+  if(typeof d.close==='function') d.close(); else d.removeAttribute('open');
+  captureTarget=null;
+}
+function proceedToCapture(){
+  const target=captureTarget;
+  const d=$('guideModal');
+  if(typeof d.close==='function') d.close(); else d.removeAttribute('open');
+  captureTarget=null;
+  if(target) $(target==='cam'?'fCam':'fGal').click();
+}
 $('fCam').onchange = e => onFile(e.target.files[0]);
 $('fGal').onchange = e => onFile(e.target.files[0]);
+$('guideModal').addEventListener('cancel',()=>{ captureTarget=null; });
+
+for(const id of ['cModel','cMax','cStep']){
+  $(id).addEventListener('change',()=>{
+    if(!state) return;
+    state=null; $('secResult').classList.add('hide');
+    msg('Os dados do coletor foram alterados. Processe a imagem novamente.','warn');
+  });
+}
 
 /* ---------- data/hora: EXIF próprio, sem biblioteca ---------- */
 function exifDate(buf){
@@ -256,52 +291,105 @@ async function onFile(f){
   const when = exifDate(buf) || nameDate(f.name) || new Date(f.lastModified||Date.now());
   const url = URL.createObjectURL(new Blob([buf]));
   img = new Image();
-  img.onload = () => { URL.revokeObjectURL(url); analyze(when); };
+  img.onload = async () => {
+    URL.revokeObjectURL(url);
+    try{ await analyze(when); }
+    catch(err){
+      console.error(err);
+      state=null; $('secResult').classList.add('hide');
+      msg('O processamento foi interrompido: '+(err.message||'erro não identificado')+'.','err');
+    }
+  };
   img.src = url;
 }
 
 /* ---------- pipeline ---------- */
 const WORK = 900;
 
-function analyze(when){
+async function analyze(when){
   const s = WORK/Math.max(img.width,img.height);
   const w = Math.round(img.width*s), h = Math.round(img.height*s);
   V.width=w; V.height=h;
   VX.drawImage(img,0,0,w,h);
   const px = VX.getImageData(0,0,w,h).data;
 
+  const config=collectorConfig();
+  if(!config.ok){
+    state=null; $('secResult').classList.add('hide');
+    msg('Dados do coletor inválidos: '+config.why,'err'); return;
+  }
+
   const q = quality(px,w,h);
   if(!q.ok){ state=null; $('secResult').classList.add('hide');
              msg('Foto rejeitada: '+q.why+' Refaça a captura.','err'); return; }
 
-  const ticks = detectTicks(px,w,h);
+  const collector=locateCollector(px,w,h);
+  if(!collector.ok){
+    state=null; $('secResult').classList.add('hide');
+    msg('Não foi possível localizar o coletor. '+collector.why,'err'); return;
+  }
+
+  const ticks = detectTicks(px,w,h,collector);
   if(!ticks || ticks.length < 6){
     state=null; $('secResult').classList.add('hide');
     msg('Não foi possível ler a escala impressa (' + (ticks?ticks.length:0) +
-        ' traços). Aproxime o celular da coluna de números, evite reflexo sobre '+
-        'a escala e mantenha a bolsa iluminada por igual.','err');
+        ' traços). Refaça a foto com todo o coletor no quadro, bordos alinhados, '+
+        'escala nítida e iluminação uniforme.','err');
     return;
   }
 
   const slope = tickSlope(px,w,h,ticks);
-  const xr = median(ticks.map(t => t.x0+t.bw));
-  const men = meniscus(px,w,h,slope, Math.round(xr+0.03*w), Math.round(xr+0.22*w));
-  if(!men){
+  const angle=Math.atan(slope)*180/Math.PI;
+  if(Math.abs(angle)>3){
     state=null; $('secResult').classList.add('hide');
-    msg('Escala lida, mas a superfície do líquido não foi identificada. '+
-        'Pode ser volume muito baixo, espuma sobre o menisco ou reflexo.','err');
+    msg(`Foto rejeitada: escala inclinada ${Math.abs(angle).toFixed(1)}°; o limite é 3°. `+
+        'Use o nível da câmera e mantenha-a perpendicular ao coletor.','err');
     return;
   }
 
-  const yLevel = slope*(xr-men.x0) + men.c;
-  const col = sampleColor(px,w,h,xr,yLevel,slope);
+  const scale=locateScale(ticks,collector,w,h);
+  const xr = median(ticks.map(t => t.x0+t.bw));
 
-  state = {when, w, h, ticks, slope, xr, men, yLevel, col,
-           anchorIdx: guessAnchorIdx(ticks, yLevel), anchorVol: null};
-  buildAnchorOptions();
+  msg('Coletor e escala localizados. Lendo os números impressos por OCR…','warn');
+  let ocr;
+  try{ ocr=await recognizeScale(px,w,h,scale,config); }
+  catch(err){
+    state=null; $('secResult').classList.add('hide');
+    msg('Não foi possível iniciar o OCR da escala. Verifique a conexão na primeira '+
+        'utilização e tente novamente. Detalhe: '+(err.message||'falha no OCR')+'.','err');
+    return;
+  }
+
+  const calibration=validateOcrScale(ocr.candidates,ticks,config);
+  if(!calibration.ok){
+    state=null; $('secResult').classList.add('hide');
+    const found=ocr.candidates.length ? ocr.candidates.map(p=>p.vol).join(', ') : 'nenhum';
+    msg('OCR insuficiente: é obrigatório confirmar pelo menos três números coerentes '+
+        `com o coletor ${config.max} mL / ${config.step} mL por traço. `+
+        `Números candidatos: ${found}. Refaça a foto mais próxima e nítida da escala.`,'err');
+    return;
+  }
+
+  const men = meniscus(px,w,h,slope,collector,scale,xr);
+  if(!men){
+    state=null; $('secResult').classList.add('hide');
+    msg('Escala e OCR validados, mas o nível hidroaéreo não foi confirmado em pelo '+
+        'menos duas faixas de contraste. Refaça a foto sem reflexos nem artefatos.','err');
+    return;
+  }
+
+  const yLevel = men.yRef;
+  const col = sampleColor(px,w,h,xr,yLevel,slope);
+  const confirmedNumbers=[...calibration.points]
+    .sort((a,b)=>Math.abs(a.y-yLevel)-Math.abs(b.y-yLevel)).slice(0,3)
+    .sort((a,b)=>a.y-b.y);
+
+  state = {when,w,h,ticks,slope,xr,men,yLevel,col,collector,scale,ocr,
+           calibration,config,confirmedNumbers};
   recompute();
-  msg(`Escala lida: ${ticks.length} traços, inclinação ${(Math.atan(slope)*180/Math.PI).toFixed(1)}°. `+
-      `Confirme abaixo o valor do traço destacado.`,'ok');
+  msg(`Processamento concluído: coletor localizado, ${ticks.length} traços, `+
+      `${calibration.points.length} números coerentes e nível confirmado em `+
+      `${men.inliers.length} de 3 faixas.`,'ok');
 }
 
 /* --- crivo de qualidade: nitidez e exposição --- */
@@ -316,12 +404,78 @@ function quality(px,w,h){
   }
   const varL = sum2/n - (sum/n)*(sum/n);
   let dark=0,bright=0;
-  for(let j=0;j<g.length;j+=7){ if(g[j]<25) dark++; if(g[j]>245) bright++; }
+  for(let j=0;j<g.length;j+=7){ if(g[j]<25) dark++; if(g[j]>252) bright++; }
   const tot=Math.ceil(g.length/7);
   if(varL < 45) return {ok:false, why:`imagem sem nitidez (variância do laplaciano ${varL.toFixed(0)}, mínimo 45).`};
   if(dark/tot > .62) return {ok:false, why:'imagem subexposta.'};
-  if(bright/tot > .35) return {ok:false, why:'imagem estourada por reflexo ou flash.'};
+  if(bright/tot > .68) return {ok:false, why:'imagem estourada por reflexo ou flash.'};
   return {ok:true};
+}
+
+/* --- dados declarados do coletor e números permitidos na impressão --- */
+function collectorConfig(){
+  const model=$('cModel').value.trim();
+  const max=Math.round(Number($('cMax').value));
+  const step=Math.round(Number($('cStep').value));
+  if(!model) return {ok:false,why:'informe o modelo.'};
+  if(!Number.isFinite(max)||max<=0) return {ok:false,why:'informe um volume máximo válido.'};
+  if(!Number.isFinite(step)||step<=0) return {ok:false,why:'informe um intervalo válido.'};
+  if(max%step!==0) return {ok:false,why:'o volume máximo deve ser múltiplo do intervalo entre traços.'};
+  return {ok:true,model,max,step,labels:expectedScaleLabels(max,step)};
+}
+
+function expectedScaleLabels(max,step){
+  /* Perfil impresso informado para o coletor de 2000 mL com traços de 100 mL. */
+  if(max===2000 && step===100) return [2000,1800,1600,1400,1200,1000,800,600];
+  const out=[];
+  for(let v=max;v>=step;v-=2*step) out.push(v);
+  return out;
+}
+
+/* --- localização do coletor por projeções de borda, favorecendo o enquadramento cheio --- */
+function locateCollector(px,w,h){
+  const lum=(x,y)=>{
+    const i=((y*w+x)<<2); return px[i]*.299+px[i+1]*.587+px[i+2]*.114;
+  };
+  const vEdge=x=>{
+    let s=0,n=0;
+    for(let y=Math.round(.08*h);y<Math.round(.92*h);y+=3){
+      s+=Math.abs(lum(x+2,y)-lum(x-2,y)); n++;
+    }
+    return n?s/n:0;
+  };
+  const hEdge=y=>{
+    let s=0,n=0;
+    for(let x=Math.round(.08*w);x<Math.round(.92*w);x+=3){
+      s+=Math.abs(lum(x,y+2)-lum(x,y-2)); n++;
+    }
+    return n?s/n:0;
+  };
+  const peak=(a,b,target,scoreFn)=>{
+    let best={at:Math.round(target),raw:0,score:-1};
+    const span=Math.max(1,b-a);
+    for(let p=Math.max(3,Math.round(a));p<=Math.min(Math.round(b),
+        scoreFn===vEdge?w-4:h-4);p++){
+      const raw=scoreFn(p);
+      const proximity=1-Math.min(1,Math.abs(p-target)/span);
+      const score=raw*(.65+.35*proximity);
+      if(score>best.score) best={at:p,raw,score};
+    }
+    return best;
+  };
+
+  const le=peak(.01*w,.30*w,.04*w,vEdge), re=peak(.70*w,.99*w,.96*w,vEdge);
+  const te=peak(.01*h,.25*h,.04*h,hEdge), be=peak(.75*h,.99*h,.96*h,hEdge);
+  const x0=le.raw>=2.5?le.at:Math.round(.015*w);
+  const x1=re.raw>=2.5?re.at:Math.round(.985*w);
+  const y0=te.raw>=2.5?te.at:Math.round(.015*h);
+  const y1=be.raw>=2.5?be.at:Math.round(.985*h);
+  const bw=x1-x0,bh=y1-y0;
+  if(bw<.62*w||bh<.62*h){
+    return {ok:false,why:'enquadre apenas o coletor e aproxime seus bordos dos bordos da imagem.'};
+  }
+  return {ok:true,x0,x1,y0,y1,bw,bh,
+          confidence:median([le.raw,re.raw,te.raw,be.raw])};
 }
 
 /* --- máscara verde-azulada da impressão --- */
@@ -358,11 +512,13 @@ function components(m,w,h){
   return {out,lab};
 }
 
-function tickCandidates(px,w,h,k){
+function tickCandidates(px,w,h,k,roi){
   const {out} = components(tealMask(px,w,h,k),w,h);
   const c=[];
   for(const o of out){
     const bw=o.x1-o.x0+1, bh=o.y1-o.y0+1;
+    const cx=(o.x0+o.x1)/2, cy=(o.y0+o.y1)/2;
+    if(cx<=roi.x0||cx>=roi.x1||cy<=roi.y0||cy>=roi.y1) continue;
     if(bw < .015*w || bw > .12*w) continue;   // largura plausível de traço
     if(bh > .03*h) continue;                  // traço é fino
     if(bw < 2.5*bh) continue;                 // e alongado na horizontal
@@ -372,16 +528,30 @@ function tickCandidates(px,w,h,k){
   return c;
 }
 
-function detectTicks(px,w,h){
+function detectTicks(px,w,h,roi){
   let best=null;
   for(const k of [26,20,14,10,7]){
-    const c = tickCandidates(px,w,h,k);
+    const c = tickCandidates(px,w,h,k,roi);
     if(c.length < 4) continue;
     const g = groupColumn(c,w,h);
     if(g && (!best || g.length > best.length)) best=g;
     if(best && best.length >= 14) break;
   }
   return best;
+}
+
+function locateScale(ticks,collector,w,h){
+  const gap=medianGap(ticks), tickW=median(ticks.map(t=>t.bw));
+  const tickX0=Math.min(...ticks.map(t=>t.x0));
+  const tickX1=Math.max(...ticks.map(t=>t.x0+t.bw));
+  const padX=Math.max(.12*collector.bw,2.5*tickW);
+  return {
+    tickX0,tickX1,
+    x0:Math.max(collector.x0,Math.round(tickX0-padX)),
+    x1:Math.min(collector.x1,Math.round(tickX1+.10*collector.bw)),
+    y0:Math.max(collector.y0,Math.round(ticks[0].y-1.5*gap)),
+    y1:Math.min(collector.y1,Math.round(ticks[ticks.length-1].y+1.5*gap))
+  };
 }
 
 /* agrupa pela borda esquerda: a escala é uma coluna alinhada */
@@ -420,89 +590,249 @@ function tickSlope(px,w,h,ticks){
     if(sl.length>=4) break;
   }
   if(!sl.length) return 0;
-  const s=median(sl);
-  return Math.abs(s)<0.6 ? s : 0;
+  return median(sl);
 }
 
-/* menisco: reta paralela aos traços que maximiza o degrau de amarelo */
-function meniscus(px,w,h,slope,x0,x1){
-  x0=Math.max(0,x0); x1=Math.min(w,x1);
-  if(x1-x0 < 20) return null;
-  const Y=(x,y)=>{ const i=((y*w+x)<<2); return (px[i]+px[i+1])/2 - px[i+2]; };
-  let bestC=null, bestD=-1e9;
-  for(let c=18;c<h-18;c++){
-    let below=0, above=0, n=0;
-    for(let x=x0;x<x1;x+=2){
-      const y=Math.round(slope*(x-x0)+c);
-      if(y<15||y>=h-15) continue;
-      below += Y(x,y+8)+Y(x,y+13);
-      above += Y(x,y-8)+Y(x,y-13);
-      n++;
+/* ---------- OCR especializado na coluna numérica da escala ---------- */
+const OCR_SCRIPT='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+let ocrLoader=null;
+
+function ensureTesseract(){
+  if(window.Tesseract) return Promise.resolve(window.Tesseract);
+  if(ocrLoader) return ocrLoader;
+  ocrLoader=new Promise((resolve,reject)=>{
+    const s=document.createElement('script');
+    s.src=OCR_SCRIPT; s.crossOrigin='anonymous';
+    s.onload=()=>window.Tesseract?resolve(window.Tesseract):reject(new Error('biblioteca OCR não carregada'));
+    s.onerror=()=>reject(new Error('biblioteca OCR indisponível'));
+    document.head.appendChild(s);
+  });
+  return ocrLoader;
+}
+
+function makeOcrCanvas(px,w,h,scale){
+  const roi={x0:Math.max(0,Math.floor(scale.x0)),x1:Math.min(w,Math.ceil(scale.x1)),
+             y0:Math.max(0,Math.floor(scale.y0)),y1:Math.min(h,Math.ceil(scale.y1))};
+  const rw=roi.x1-roi.x0,rh=roi.y1-roi.y0,pad=10,zoom=3;
+  const base=document.createElement('canvas'); base.width=rw+2*pad; base.height=rh+2*pad;
+  const bx=base.getContext('2d'), out=bx.createImageData(base.width,base.height);
+  out.data.fill(255);
+  const ink=new Uint8Array(rw*rh);
+  for(let y=0;y<rh;y++) for(let x=0;x<rw;x++){
+    const i=(((roi.y0+y)*w+(roi.x0+x))<<2);
+    const r=px[i],g=px[i+1],b=px[i+2],sat=Math.max(r,g,b)-Math.min(r,g,b);
+    if(g>r+5 && g>=b-35 && sat>10 && r<215) ink[y*rw+x]=1;
+  }
+  /* Dilatação mínima: recupera algarismos finos sem unir linhas vizinhas. */
+  for(let y=0;y<rh;y++) for(let x=0;x<rw;x++){
+    let on=0;
+    for(let dy=-1;dy<=1&&!on;dy++) for(let dx=-1;dx<=1;dx++){
+      const xx=x+dx,yy=y+dy;
+      if(xx>=0&&yy>=0&&xx<rw&&yy<rh&&ink[yy*rw+xx]){on=1;break;}
     }
-    if(n < .7*((x1-x0)/2)) continue;
-    const d=(below-above)/n;
-    if(d>bestD){ bestD=d; bestC=c; }
+    if(on){
+      const p=(((y+pad)*base.width+(x+pad))<<2);
+      out.data[p]=out.data[p+1]=out.data[p+2]=0; out.data[p+3]=255;
+    }
   }
-  if(bestC===null || bestD < 12) return null;   // sem degrau = sem menisco
-  return {c:bestC, x0, x1, strength:bestD};
+  bx.putImageData(out,0,0);
+  const canvas=document.createElement('canvas');
+  canvas.width=base.width*zoom; canvas.height=base.height*zoom;
+  const cx=canvas.getContext('2d'); cx.imageSmoothingEnabled=false;
+  cx.drawImage(base,0,0,canvas.width,canvas.height);
+  return {canvas,roi,pad,zoom};
 }
 
-/* ---------- âncora e volume ---------- */
-function guessAnchorIdx(ticks,yLevel){
-  let bi=0, bd=1e9;
-  ticks.forEach((t,i)=>{ const d=Math.abs(t.y-yLevel); if(d<bd){bd=d;bi=i;} });
-  return bi;
-}
-
-function buildAnchorOptions(){
-  const max=+$('cMax').value||2000, step=+$('cStep').value||100;
-  const sel=$('anchorVal'); sel.innerHTML='';
-  for(let v=max; v>=step; v-=step){
-    const o=document.createElement('option'); o.value=v; o.textContent=v+' mL';
-    sel.appendChild(o);
+function parseOcrCandidates(data,prep,config){
+  const allowed=new Set(config.labels), items=[];
+  const words=(data&&data.words)||[];
+  for(const word of words){
+    if(!word.bbox) continue;
+    const digits=String(word.text||'').replace(/\D/g,'');
+    if(!digits) continue;
+    const x=prep.roi.x0+((word.bbox.x0+word.bbox.x1)/2/prep.zoom-prep.pad);
+    const y=prep.roi.y0+((word.bbox.y0+word.bbox.y1)/2/prep.zoom-prep.pad);
+    const h=(word.bbox.y1-word.bbox.y0)/prep.zoom;
+    items.push({digits,x,y,h,confidence:Number(word.confidence)||0});
   }
-  /* palpite: assume que o traço mais alto detectado é o volume máximo */
-  const guess = Math.max(step, max - state.anchorIdx*step);
-  sel.value = String(Math.round(guess/step)*step);
+
+  const candidates=[];
+  for(const item of items){
+    const n=Number(item.digits);
+    if(allowed.has(n)) candidates.push({...item,vol:n});
+  }
+
+  /* Alguns celulares separam os algarismos; recompõe palavras na mesma linha. */
+  const rows=[];
+  for(const item of [...items].sort((a,b)=>a.y-b.y)){
+    let row=rows.find(r=>Math.abs(r.y-item.y)<=Math.max(5,.65*Math.max(r.h,item.h)));
+    if(!row){row={y:item.y,h:item.h,items:[]};rows.push(row);}
+    row.items.push(item); row.y=median(row.items.map(i=>i.y)); row.h=median(row.items.map(i=>i.h));
+  }
+  for(const row of rows){
+    const joined=row.items.sort((a,b)=>a.x-b.x).map(i=>i.digits).join('');
+    const n=Number(joined);
+    if(allowed.has(n)) candidates.push({vol:n,y:row.y,x:median(row.items.map(i=>i.x)),
+      confidence:median(row.items.map(i=>i.confidence)),digits:joined});
+  }
+
+  const unique=[];
+  for(const c of candidates.sort((a,b)=>b.confidence-a.confidence)){
+    if(!unique.some(u=>u.vol===c.vol&&Math.abs(u.y-c.y)<8)) unique.push(c);
+  }
+  return unique.sort((a,b)=>a.y-b.y);
 }
 
-function shiftAnchor(d){
-  if(!state) return;
-  state.anchorIdx = Math.max(0, Math.min(state.ticks.length-1, state.anchorIdx+d));
-  recompute();
+async function recognizeScale(px,w,h,scale,config){
+  const Tesseract=await ensureTesseract();
+  const prep=makeOcrCanvas(px,w,h,scale);
+  let worker=null;
+  try{
+    worker=await Tesseract.createWorker('eng',1,{logger:m=>{
+      if(m.status==='recognizing text'&&m.progress>.5)
+        msg(`Lendo os números da escala por OCR… ${Math.round(m.progress*100)}%`,'warn');
+    }});
+    await worker.setParameters({tessedit_char_whitelist:'0123456789',
+      tessedit_pageseg_mode:'11',user_defined_dpi:'300'});
+    const result=await worker.recognize(prep.canvas);
+    return {candidates:parseOcrCandidates(result.data,prep,config),text:(result.data.text||'').trim()};
+  }finally{
+    if(worker) await worker.terminate();
+  }
+}
+
+function validateOcrScale(candidates,ticks,config){
+  const gap=medianGap(ticks),tol=Math.max(8,.80*gap),mapped=[];
+  for(const c of candidates){
+    let idx=0,dist=Infinity;
+    ticks.forEach((t,i)=>{const d=Math.abs(t.y-c.y);if(d<dist){dist=d;idx=i;}});
+    if(dist<=tol) mapped.push({...c,idx,dist});
+  }
+  let best=[];
+  for(const anchor of mapped){
+    const intercept=anchor.vol+anchor.idx*config.step;
+    let inliers=mapped.filter(p=>Math.abs((intercept-p.idx*config.step)-p.vol)<=config.step*.20);
+    const seenV=new Set(),seenI=new Set();
+    inliers=inliers.sort((a,b)=>b.confidence-a.confidence).filter(p=>{
+      if(seenV.has(p.vol)||seenI.has(p.idx)) return false;
+      seenV.add(p.vol);seenI.add(p.idx);return true;
+    }).sort((a,b)=>a.idx-b.idx);
+    if(inliers.length>best.length) best=inliers;
+  }
+  if(best.length<3) return {ok:false,points:best};
+  const intercept=median(best.map(p=>p.vol+p.idx*config.step));
+  return {ok:true,points:best,intercept};
+}
+
+/* --- menisco: consenso da transição claro -> escuro em três faixas limpas --- */
+function meniscus(px,w,h,slope,collector,scale,xr){
+  const cleanX0=Math.max(scale.x1+Math.round(.02*collector.bw),
+                         collector.x0+Math.round(.30*collector.bw));
+  const cleanX1=collector.x1-Math.round(.04*collector.bw);
+  const cleanW=cleanX1-cleanX0;
+  if(cleanW<.28*collector.bw) return null;
+  const fractions=[[.02,.28],[.37,.63],[.72,.98]];
+  const bands=fractions.map(([a,b])=>({x0:Math.round(cleanX0+a*cleanW),
+                                       x1:Math.round(cleanX0+b*cleanW)}));
+  const offsets=[5,9,13],candidates=[];
+  const pixel=(x,y)=>{
+    const i=((y*w+x)<<2),r=px[i],g=px[i+1],b=px[i+2];
+    const sat=Math.max(r,g,b)-Math.min(r,g,b);
+    if(g>r+8&&g>=b-30&&sat>12) return null;
+    return {lum:r*.299+g*.587+b*.114,yellow:(r+g)/2-b};
+  };
+
+  for(const band of bands){
+    const scoreAt=(yRef,distances)=>{
+      const aL=[],bL=[],aY=[],bY=[];
+      for(let x=band.x0;x<band.x1;x+=3){
+        const line=yRef+slope*(x-xr);
+        for(const d of distances){
+          const ya=Math.round(line-d),yb=Math.round(line+d);
+          if(ya<0||yb>=h) continue;
+          const a=pixel(x,ya),b=pixel(x,yb);
+          if(!a||!b) continue;
+          aL.push(a.lum);bL.push(b.lum);aY.push(a.yellow);bY.push(b.yellow);
+        }
+      }
+      if(aL.length<Math.max(18,(band.x1-band.x0)/3)) return -Infinity;
+      const darkening=(median(aL)-median(bL))/255;
+      const yellowing=Math.max(0,(median(bY)-median(aY))/128);
+      return darkening+.30*yellowing;
+    };
+    let best={y:null,score:-Infinity};
+    for(let yRef=collector.y0+16;yRef<=collector.y1-16;yRef++){
+      const score=scoreAt(yRef,offsets);
+      if(score>best.score) best={y:yRef,score};
+    }
+    /* A janela larga acha a transição; a janela curta reposiciona a linha na borda real. */
+    if(best.y!==null){
+      let refined={y:best.y,score:-Infinity};
+      for(let yRef=Math.max(collector.y0+5,best.y-16);
+          yRef<=Math.min(collector.y1-5,best.y+16);yRef++){
+        const score=scoreAt(yRef,[1,2,3,4]);
+        if(score>refined.score+1e-9 ||
+           (Math.abs(score-refined.score)<=1e-9&&yRef>refined.y)) refined={y:yRef,score};
+      }
+      best=refined;
+    }
+    if(best.y!==null&&best.score>.025) candidates.push({...band,...best});
+  }
+  if(candidates.length<2) return null;
+  const center=median(candidates.map(c=>c.y));
+  const tolerance=Math.max(8,.035*collector.bh);
+  const inliers=candidates.filter(c=>Math.abs(c.y-center)<=tolerance);
+  if(inliers.length<2) return null;
+  const weight=inliers.reduce((s,c)=>s+Math.max(.001,c.score),0);
+  const yRef=inliers.reduce((s,c)=>s+c.y*Math.max(.001,c.score),0)/weight;
+  return {yRef:Math.round(yRef),x0:cleanX0,x1:cleanX1,candidates,inliers,
+          strength:median(inliers.map(c=>c.score))};
+}
+
+/* ---------- volume conservador: somente múltiplos inteiros da escala ---------- */
+function conservativeVolume(ticks,y,calibration,config){
+  const volOf=i=>calibration.intercept-i*config.step;
+  const gap=medianGap(ticks);
+  let raw,detail;
+  if(y<=ticks[0].y){
+    raw=volOf(0)+(ticks[0].y-y)/gap*config.step;
+    detail=`nível acima do traço ${Math.round(volOf(0))} mL`;
+  }else if(y>=ticks[ticks.length-1].y){
+    raw=volOf(ticks.length-1)-(y-ticks[ticks.length-1].y)/gap*config.step;
+    detail=`nível abaixo do traço ${Math.round(volOf(ticks.length-1))} mL`;
+  }else{
+    for(let i=0;i<ticks.length-1;i++) if(ticks[i].y<=y&&y<=ticks[i+1].y){
+      const r=(y-ticks[i].y)/(ticks[i+1].y-ticks[i].y);
+      raw=volOf(i)-r*config.step;
+      const upper=Math.round(volOf(i)),lower=Math.round(volOf(i+1));
+      detail=r<.04?`nível sobre o traço ${upper} mL`:
+        `nível abaixo de ${upper} mL; próximo traço inferior: ${lower} mL`;
+      break;
+    }
+  }
+  if(!Number.isFinite(raw)) return null;
+  const volume=Math.max(0,Math.min(config.max,
+    Math.floor((raw+config.step*.015)/config.step)*config.step));
+  return {volume,raw,detail};
 }
 
 function recompute(){
   if(!state) return;
-  const step=+$('cStep').value||100, max=+$('cMax').value||2000;
-  const av=+$('anchorVal').value;
-  const T=state.ticks, ai=state.anchorIdx, y=state.yLevel;
-  const volOf = i => av + (ai-i)*step;
-
-  let vol=null, detail='';
-  if(y <= T[0].y){
-    vol = volOf(0) + (T[0].y-y)/medianGap(T)*step;
-    detail = 'acima do traço mais alto detectado — extrapolado';
-  } else if(y >= T[T.length-1].y){
-    vol = volOf(T.length-1) - (y-T[T.length-1].y)/medianGap(T)*step;
-    detail = 'abaixo do traço mais baixo detectado — extrapolado';
-  } else {
-    for(let i=0;i<T.length-1;i++){
-      if(T[i].y<=y && y<=T[i+1].y){
-        const r=(y-T[i].y)/(T[i+1].y-T[i].y);
-        vol = volOf(i) + r*(volOf(i+1)-volOf(i));
-        detail = `interpolado entre ${volOf(i)} e ${volOf(i+1)} mL`;
-        break;
-      }
-    }
+  const reading=conservativeVolume(state.ticks,state.yLevel,state.calibration,state.config);
+  if(!reading){
+    state=null;$('secResult').classList.add('hide');
+    msg('Não foi possível converter o nível em um valor da escala.','err');return;
   }
-  vol = Math.max(0, Math.min(max, Math.round(vol/25)*25));
-  state.volume = vol;
-  $('rVol').textContent = vol;
-  $('rDetail').textContent = detail + ` · ${T.length} traços · menisco ${(Math.atan(state.slope)*180/Math.PI).toFixed(1)}°`;
-  $('rTime').textContent = state.when.toLocaleString('pt-BR');
-  $('rDot').style.background = state.col.hex;
-  $('rColor').textContent = state.col.name;
+  state.volume=reading.volume;
+  const nums=state.confirmedNumbers.map(p=>p.vol);
+  $('rOcr').textContent=`OCR confirmou ${nums.join(', ')} mL; ordem e espaçamento coerentes com `+
+    `${state.config.max} mL / ${state.config.step} mL por traço.`;
+  $('rVol').textContent='aproximadamente '+reading.volume;
+  $('rDetail').textContent=reading.detail+' · leitura conservadora pelo valor inferior da escala · '+
+    `${state.ticks.length} traços · nível ${(Math.atan(state.slope)*180/Math.PI).toFixed(1)}°`;
+  $('rTime').textContent=state.when.toLocaleString('pt-BR');
+  $('rDot').style.background=state.col.hex;
+  $('rColor').textContent=state.col.name;
   draw();
   $('secResult').classList.remove('hide');
 }
@@ -541,18 +871,26 @@ function sampleColor(px,w,h,xr,yLevel,slope){
 function draw(){
   const w=state.w,h=state.h;
   VX.drawImage(img,0,0,w,h);
-  const T=state.ticks;
+  const c=state.collector,s=state.scale,T=state.ticks;
+  VX.strokeStyle='#198754';VX.lineWidth=3;
+  VX.strokeRect(c.x0,c.y0,c.bw,c.bh);
+  VX.strokeStyle='#6f42c1';VX.lineWidth=2;
+  VX.strokeRect(s.x0,s.y0,s.x1-s.x0,s.y1-s.y0);
   VX.lineWidth=3; VX.strokeStyle='#0d6efd';
-  T.forEach((t,i)=>{
-    if(i===state.anchorIdx) return;
+  T.forEach(t=>{
     VX.beginPath(); VX.moveTo(t.x0,t.y); VX.lineTo(t.x0+t.bw,t.y); VX.stroke();
   });
-  const a=T[state.anchorIdx];
-  VX.strokeStyle='#ffc107'; VX.lineWidth=5;
-  VX.beginPath(); VX.moveTo(a.x0-4,a.y); VX.lineTo(a.x0+a.bw+10,a.y); VX.stroke();
+  VX.fillStyle='#6f42c1';VX.font='bold 14px sans-serif';
+  state.calibration.points.forEach(p=>{
+    VX.beginPath();VX.arc(Math.max(s.x0+7,s.tickX0-8),p.y,5,0,Math.PI*2);VX.fill();
+    VX.fillText(String(p.vol),s.x0+4,Math.max(14,p.y-7));
+  });
   const m=state.men;
   VX.strokeStyle='#dc3545'; VX.lineWidth=4;
-  VX.beginPath(); VX.moveTo(m.x0, m.c); VX.lineTo(m.x1, state.slope*(m.x1-m.x0)+m.c); VX.stroke();
+  VX.beginPath();
+  VX.moveTo(m.x0,m.yRef+state.slope*(m.x0-state.xr));
+  VX.lineTo(m.x1,m.yRef+state.slope*(m.x1-state.xr));
+  VX.stroke();
 }
 
 /* ---------- registros ---------- */
@@ -595,7 +933,7 @@ function render(){
   rows.forEach(r=>{
     const tr=document.createElement('tr');
     tr.innerHTML = `<td>${new Date(r.t).toLocaleString('pt-BR')}</td>
-      <td><b>${r.vol} mL</b></td>
+      <td><b>≈ ${r.vol} mL</b></td>
       <td>${r.diur===null?'—':(r.diur<0?'<span style="color:#dc3545">negativa</span>':r.diur+' mL')}</td>
       <td>${r.deb===null?'—':r.deb.toFixed(2)}</td>
       <td><span class="dot" style="background:${r.colorHex}"></span> ${r.colorName}</td>
@@ -640,7 +978,7 @@ function chart(rows){
 
 function exportCSV(){
   const rows=computed();
-  let csv='data_hora,volume_mL,diurese_mL,debito_mL_kg_h,coloracao,sinais,esvaziado\n';
+  let csv='data_hora,volume_aproximado_mL,diurese_mL,debito_mL_kg_h,coloracao,sinais,esvaziado\n';
   rows.forEach(r=>{
     csv+=`"${new Date(r.t).toISOString()}",${r.vol},${r.diur??''},${r.deb!=null?r.deb.toFixed(2):''},`+
          `"${r.colorName}","${r.sy}",${r.emptied?'sim':'nao'}\n`;
